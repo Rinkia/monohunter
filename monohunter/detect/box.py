@@ -32,6 +32,13 @@ _MAD_TO_SIGMA = 1.4826  # MAD -> Gaussian sigma
 # ramps span hours-to-a-day and masquerade as transits; a box-width-only guard
 # misses ramps wider than the smallest box. Widen if edge FPs persist.
 EDGE_TRIM_D = 0.5
+# Isolation guard: reject if a SECOND independent dip (same duration, well
+# separated) is more than this fraction of the candidate's depth. A real single
+# transit stands alone; a variable / eclipsing-binary star has other troughs
+# just as deep, so its "dip" is not isolated. ponytail: a single ratio; a proper
+# per-star variability model (Lomb-Scargle prewhitening) would do better but is
+# overkill for v1.
+DEFAULT_MAX_SECONDARY_RATIO = 0.5
 
 
 class BoxMatchedFilter(Detector):
@@ -39,9 +46,11 @@ class BoxMatchedFilter(Detector):
         self,
         durations_hr: tuple[float, ...] = DEFAULT_DURATIONS_HR,
         snr_threshold: float = DEFAULT_SNR_THRESHOLD,
+        max_secondary_ratio: float = DEFAULT_MAX_SECONDARY_RATIO,
     ) -> None:
         self.durations_hr = durations_hr
         self.snr_threshold = snr_threshold
+        self.max_secondary_ratio = max_secondary_ratio
 
     def search(self, time: np.ndarray, flux: np.ndarray) -> list[Candidate]:
         time = np.asarray(time, dtype=float)
@@ -60,6 +69,8 @@ class BoxMatchedFilter(Detector):
             return []
 
         best: Candidate | None = None
+        best_i = 0
+        best_width = 0
         for dur_hr in self.durations_hr:
             width = int(round((dur_hr / 24.0) / dt))  # cadences in the box
             if width < 3 or width >= flux.size:
@@ -86,7 +97,26 @@ class BoxMatchedFilter(Detector):
                     duration_hr=float(dur_hr),
                     snr=float(snr),
                 )
+                best_i, best_width = i, width
 
         if best is None or best.snr < self.snr_threshold:
             return []
+
+        # Isolation guard: is there a SECOND dip nearly as deep, well away from
+        # the candidate? A real single transit has none (flat baseline elsewhere).
+        # A variable / eclipsing-binary star keeps dipping, so its deepest trough
+        # is not special — reject it. (TIC 17308640 was this: SNR 74 on a ~2%
+        # variable star.)
+        smooth = uniform_filter1d(flux, size=best_width, mode="nearest")
+        guard_edge = int(round(EDGE_TRIM_D / dt)) + best_width // 2
+        smooth[:guard_edge] = np.inf
+        smooth[-guard_edge:] = np.inf
+        idx = np.arange(flux.size)
+        smooth[np.abs(idx - best_i) <= 2 * best_width] = np.inf  # mask the candidate
+        finite = np.isfinite(smooth)
+        if finite.sum() >= 20:
+            second_depth = 1.0 - float(np.min(smooth[finite]))
+            depth = best.depth_ppt / 1e3
+            if second_depth > self.max_secondary_ratio * depth:
+                return []
         return [best]

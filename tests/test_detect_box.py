@@ -38,6 +38,28 @@ def test_injected_transit_is_recovered():
     assert abs(cand.event_time_btjd - time[center]) < (half + 5) * dt
 
 
+def test_variable_star_is_rejected():
+    # Continuous ~2% oscillation over many cycles, no flat baseline (the
+    # TIC 17308640 case). Every trough is as deep as the deepest, so the
+    # isolation guard must reject it despite a high SNR.
+    time = _time_axis(n=15000)  # ~21 days, ~8 cycles of a 2.5-day period
+    rng = np.random.default_rng(4)
+    flux = 1.0 + 0.02 * np.sin(2 * np.pi * time / 2.5) + rng.normal(0, 5e-4, time.size)
+    assert BoxMatchedFilter().search(time, flux) == []
+
+
+def test_isolated_transit_survives_guard_on_quiet_star():
+    # Flat baseline + one dip -> depth >> out-of-transit scatter -> kept.
+    rng = np.random.default_rng(5)
+    time = _time_axis()
+    flux = 1.0 + rng.normal(0, 5e-4, time.size)
+    dt = time[1] - time[0]
+    half = int((0.5 / 24.0) / dt) * 24
+    c = time.size // 2
+    flux[c - half : c + half] -= 5e-3
+    assert len(BoxMatchedFilter().search(time, flux)) == 1
+
+
 def test_edge_ramp_is_not_a_candidate():
     # Start-of-sector ramp (no real transit) must NOT fire — the S26 false-positive bug.
     time = _time_axis()
