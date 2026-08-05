@@ -54,10 +54,10 @@ One-time PyPI setup (before the first release):
 1. On PyPI: Account → Publishing → **Add a pending publisher**:
    - PyPI project name: `monohunter`
    - Owner: `Rinkia`  ·  Repository: `monohunter`
-   - Workflow: `release.yml`  ·  Environment: `pypi`
-2. (Optional) On GitHub: create an Environment named `pypi` (Settings →
-   Environments) for a manual approval gate. Remove the `environment: pypi`
-   line in `release.yml` to skip.
+   - Workflow: `release.yml`  ·  Environment: leave blank (Any)
+2. (Optional) For a manual approval gate, create a GitHub Environment, set it
+   as the pending-publisher Environment, and add `environment: <name>` back to
+   the `publish` job in `release.yml`.
 
 Then release:
 
