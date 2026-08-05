@@ -60,6 +60,7 @@ def test_run_target_builds_valid_record(monkeypatch, tmp_path):
 
     monkeypatch.setattr(pipeline, "search_tess", lambda tic: (fake_sr, rows))
     monkeypatch.setattr(pipeline, "known_toi", lambda tic: (True, "TOI-2180"))
+    monkeypatch.setattr(pipeline, "get_stellar_density", lambda tic: (0.3, 0.05))
 
     records = pipeline.run_target(
         298663873, outdir=str(tmp_path), make_plots=True
@@ -74,10 +75,29 @@ def test_run_target_builds_valid_record(monkeypatch, tmp_path):
     assert rec.known_toi_id == "TOI-2180"
     assert rec.snr >= 7.0
     assert rec.plot_path is not None
+    # ephemeris populated (ρ* supplied)
+    assert rec.stellar_density_cgs == 0.3
+    assert rec.period_constrained is True
+    assert rec.p_best_d and rec.p_best_d > rec.p_min_d
+    assert rec.next_window_btjd and len(rec.next_window_btjd) == 3
     # plot actually written
     import os
 
     assert os.path.exists(rec.plot_path)
+
+
+def test_missing_density_leaves_period_unconstrained(monkeypatch, tmp_path):
+    time, flux = _lc_with_dip()
+    fake_sr = _FakeSR(_FakeLC(time, flux))
+    rows = [{"sector": 25, "cadence_s": 120, "_index": 0}]
+    monkeypatch.setattr(pipeline, "search_tess", lambda tic: (fake_sr, rows))
+    monkeypatch.setattr(pipeline, "known_toi", lambda tic: (False, None))
+    monkeypatch.setattr(pipeline, "get_stellar_density", lambda tic: (None, None))
+
+    rec = pipeline.run_target(1, outdir=str(tmp_path), make_plots=False, sectors=[25])[0]
+    assert rec.period_constrained is False
+    assert rec.p_best_d is None
+    assert rec.p_min_d and rec.p_min_d > 0  # still reported
 
 
 def test_sectors_filter_excludes_others(monkeypatch, tmp_path):
@@ -89,6 +109,7 @@ def test_sectors_filter_excludes_others(monkeypatch, tmp_path):
     ]
     monkeypatch.setattr(pipeline, "search_tess", lambda tic: (fake_sr, rows))
     monkeypatch.setattr(pipeline, "known_toi", lambda tic: (False, None))
+    monkeypatch.setattr(pipeline, "get_stellar_density", lambda tic: (0.3, 0.05))
 
     records = pipeline.run_target(
         1, outdir=str(tmp_path), make_plots=False, sectors=[25]
@@ -104,6 +125,7 @@ def test_cli_run_wires_through(monkeypatch, tmp_path, capsys):
     rows = [{"sector": 25, "cadence_s": 120, "_index": 0}]
     monkeypatch.setattr(pipeline, "search_tess", lambda tic: (fake_sr, rows))
     monkeypatch.setattr(pipeline, "known_toi", lambda tic: (False, None))
+    monkeypatch.setattr(pipeline, "get_stellar_density", lambda tic: (0.3, 0.05))
 
     rc = cli.main(
         ["run", "--tic", "298663873", "--outdir", str(tmp_path), "--no-plot"]

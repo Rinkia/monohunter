@@ -17,6 +17,16 @@ from .pipeline import run_target
 from .swarm import aggregate, load_records, render_html, render_json
 
 
+def _btjd_to_date(btjd: float) -> str:
+    """BTJD -> calendar date (UTC, day precision). Falls back to raw BTJD."""
+    try:
+        from astropy.time import Time
+
+        return str(Time(btjd + 2457000.0, format="jd").iso)[:10]
+    except Exception:
+        return f"BTJD {btjd:.0f}"
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="monohunter",
@@ -68,6 +78,16 @@ def main(argv: list[str] | None = None) -> int:
                 f"S{rec.sector}: depth={rec.depth_ppt:.2f}ppt "
                 f"dur={rec.duration_hr:.0f}h SNR={rec.snr:.1f}{flag} -> {path}"
             )
+            if rec.period_constrained and rec.p_best_d:
+                nxt = ""
+                if rec.next_window_btjd:
+                    nxt = f", next transit ~{_btjd_to_date(rec.next_window_btjd[1])}"
+                print(
+                    f"    P~{rec.p_best_d:.0f}d ({rec.p_lo_d:.0f}-{rec.p_hi_d:.0f}d, "
+                    f"P_min {rec.p_min_d:.0f}d){nxt}"
+                )
+            elif rec.period_constrained is False:
+                print("    period unconstrained (no reliable stellar density)")
         return 0
 
     if args.cmd == "aggregate":

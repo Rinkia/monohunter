@@ -20,8 +20,20 @@ from .characterize import fit_trapezoid
 from .crossmatch import known_toi
 from .detect import BoxMatchedFilter, Detector
 from .detrend import DEFAULT_METHOD, DEFAULT_WINDOW_D, flatten
-from .fetch import download_lightcurve, iter_lightcurves, search_tess
+from .ephemeris import estimate_period
+from .fetch import download_lightcurve, get_stellar_density, iter_lightcurves, search_tess
 from .record import FindRecord
+
+_BTJD_OFFSET = 2457000.0  # BTJD = BJD - 2457000
+
+
+def _now_btjd() -> float | None:
+    try:
+        from astropy.time import Time
+
+        return float(Time.now().jd) - _BTJD_OFFSET
+    except Exception:
+        return None
 
 
 def _values(array: object) -> np.ndarray:
@@ -60,6 +72,8 @@ def run_target(
         wanted = set(sectors)
         rows = [r for r in rows if int(r["sector"]) in wanted]
     is_known, toi_id = known_toi(tic)
+    rho_cgs, rho_err_cgs = get_stellar_density(tic)
+    now_btjd = _now_btjd()
 
     def download(row: dict) -> object:
         return download_lightcurve(sr, row["_index"])
@@ -101,6 +115,27 @@ def run_target(
                 known_toi_match=is_known,
                 known_toi_id=toi_id,
             )
+            # Ephemeris: constrain the period + predict the next transit.
+            post = estimate_period(
+                t0_btjd=t0,
+                t14_hr=duration_hr,
+                ingress_hr=ingress_hr,
+                ingress_err_hr=None,
+                depth_ppt=depth_ppt,
+                rho_star_cgs=rho_cgs,
+                rho_err_cgs=rho_err_cgs,
+                time_array=time,
+                now_btjd=now_btjd,
+            )
+            rec = rec.model_copy(update={
+                "stellar_density_cgs": rho_cgs,
+                "period_constrained": post.period_constrained,
+                "p_min_d": post.p_min_d,
+                "p_best_d": post.p_best_d,
+                "p_lo_d": post.p16_d,
+                "p_hi_d": post.p84_d,
+                "next_window_btjd": list(post.next_window_btjd) if post.next_window_btjd else None,
+            })
             if make_plots:
                 rec = rec.model_copy(update={"plot_path": _save_plot(outdir, rec, time, flat)})
             records.append(rec)

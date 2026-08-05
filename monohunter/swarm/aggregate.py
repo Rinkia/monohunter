@@ -37,6 +37,7 @@ class AggregatedCandidate:
     median_duration_hr: float = 0.0
     known_toi_match: bool = False
     known_toi_id: str | None = None
+    p_best_d: float | None = None          # best submitter's period estimate
 
     @property
     def n_submitters(self) -> int:
@@ -81,16 +82,18 @@ def aggregate(submissions: list[_Submission]) -> list[AggregatedCandidate]:
     for (tic, sector), subs in groups.items():
         recs = [s.record for s in subs]
         submitters = sorted({s.submitter for s in subs})
+        best_rec = max(recs, key=lambda r: r.snr)
         candidates.append(
             AggregatedCandidate(
                 tic=tic,
                 sector=sector,
                 submitters=submitters,
-                best_snr=max(r.snr for r in recs),
+                best_snr=best_rec.snr,
                 median_depth_ppt=statistics.median(r.depth_ppt for r in recs),
                 median_duration_hr=statistics.median(r.duration_hr for r in recs),
                 known_toi_match=any(r.known_toi_match for r in recs),
                 known_toi_id=next((r.known_toi_id for r in recs if r.known_toi_id), None),
+                p_best_d=best_rec.p_best_d if best_rec.period_constrained else None,
             )
         )
 
@@ -112,6 +115,7 @@ def render_json(candidates: list[AggregatedCandidate]) -> str:
                 "best_snr": round(c.best_snr, 1),
                 "median_depth_ppt": round(c.median_depth_ppt, 2),
                 "median_duration_hr": round(c.median_duration_hr, 1),
+                "period_d": round(c.p_best_d) if c.p_best_d else None,
                 "known_toi_id": c.known_toi_id,
             }
             for c in candidates
@@ -138,10 +142,11 @@ def render_html(candidates: list[AggregatedCandidate]) -> str:
             f"<td>{c.best_snr:.1f}</td>"
             f"<td>{c.median_depth_ppt:.2f}</td>"
             f"<td>{c.median_duration_hr:.1f}</td>"
+            f"<td>{('~%d' % c.p_best_d) if c.p_best_d else '—'}</td>"
             f"<td>{html.escape(', '.join(c.submitters))}</td>"
             "</tr>"
         )
-    body = "\n".join(rows) or '<tr><td colspan="8">No candidates yet.</td></tr>'
+    body = "\n".join(rows) or '<tr><td colspan="9">No candidates yet.</td></tr>'
     return _HTML_TEMPLATE.format(generated=generated, count=len(candidates), rows=body)
 
 
@@ -170,7 +175,7 @@ _HTML_TEMPLATE = """<!doctype html>
 <table>
 <thead><tr>
 <th>status</th><th>TIC</th><th>sector</th><th>submitters</th>
-<th>best SNR</th><th>depth (ppt)</th><th>dur (h)</th><th>who</th>
+<th>best SNR</th><th>depth (ppt)</th><th>dur (h)</th><th>P (d)</th><th>who</th>
 </tr></thead>
 <tbody>
 {rows}

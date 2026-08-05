@@ -32,6 +32,49 @@ def _sector_from_mission(value: object) -> int | None:
     return int(match.group(1)) if match else None
 
 
+_RHO_SUN_CGS = 1.408  # solar mean density, g/cm^3
+_RHO_CACHE: dict[int, tuple[float | None, float | None]] = {}
+
+
+def _as_float(value: object) -> float | None:
+    try:
+        f = float(value)  # type: ignore[arg-type]
+        return f if f == f and f not in (float("inf"), float("-inf")) else None
+    except Exception:
+        return None
+
+
+def get_stellar_density(tic: int) -> tuple[float | None, float | None]:
+    """(rho_cgs, rho_err_cgs) for a TIC. Prefer TIC 'rho', else derive from
+    R*+M*, else (None, None). Cached; offline-safe (network failure -> None)."""
+    tic = int(tic)
+    if tic in _RHO_CACHE:
+        return _RHO_CACHE[tic]
+
+    result: tuple[float | None, float | None] = (None, None)
+    try:
+        from astroquery.mast import Catalogs
+
+        cat = Catalogs.query_criteria(catalog="TIC", ID=tic)
+        if len(cat):
+            row = cat[0]
+            rho = _as_float(row["rho"])            # solar units
+            erho = _as_float(row["e_rho"])
+            if rho is None:                        # derive from R*, M* (solar)
+                rad, mass = _as_float(row["rad"]), _as_float(row["mass"])
+                if rad and mass and rad > 0:
+                    rho = mass / rad**3
+            if rho is not None and rho > 0:
+                rho_cgs = rho * _RHO_SUN_CGS
+                erho_cgs = erho * _RHO_SUN_CGS if erho else 0.3 * rho_cgs
+                result = (rho_cgs, erho_cgs)
+    except Exception:
+        result = (None, None)
+
+    _RHO_CACHE[tic] = result
+    return result
+
+
 def download_lightcurve(
     search_result: Any, index: int, quality_bitmask: str = DEFAULT_QUALITY_BITMASK
 ) -> Any:

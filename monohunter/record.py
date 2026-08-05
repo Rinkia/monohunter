@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-SCHEMA_VERSION = 2  # v2 adds ingress_hr; depth_ppt/duration_hr now trapezoid-refined
+SCHEMA_VERSION = 3  # v3 adds ephemeris: stellar density + period posterior + next-transit window
 
 
 class FindRecord(BaseModel):
@@ -35,6 +35,15 @@ class FindRecord(BaseModel):
     known_toi_match: bool = False
     known_toi_id: str | None = None
     plot_path: str | None = None
+
+    # v3 ephemeris (present when the period could be constrained)
+    stellar_density_cgs: float | None = None
+    period_constrained: bool | None = None
+    p_min_d: float | None = None
+    p_best_d: float | None = None
+    p_lo_d: float | None = None            # 16th percentile
+    p_hi_d: float | None = None            # 84th percentile
+    next_window_btjd: list[float] | None = None  # [5%, 50%, 95%] of next transit
 
     def to_json(self, **kwargs: object) -> str:
         return self.model_dump_json(**kwargs)  # type: ignore[arg-type]
