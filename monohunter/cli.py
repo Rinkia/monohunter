@@ -54,6 +54,14 @@ def main(argv: list[str] | None = None) -> int:
     agg.add_argument("--contributions", default="contributions", help="submissions dir")
     agg.add_argument("--out", default="_site", help="output dir for leaderboard.json + index.html")
 
+    wat = sub.add_parser(
+        "watch", help="incrementally scan a fresh TESS sector (resumable; run on a schedule)"
+    )
+    wat.add_argument("--sector", type=int, required=True, help="sector number to process")
+    wat.add_argument("--max", type=int, default=50, help="targets to scan this run")
+    wat.add_argument("--out", default="watch_out", help="candidate output dir")
+    wat.add_argument("--state", default="watch_state.json", help="resume state file")
+
     args = parser.parse_args(argv)
 
     if args.cmd == "run":
@@ -101,6 +109,18 @@ def main(argv: list[str] | None = None) -> int:
             f"{len(candidates)} candidates ({novel} not-yet-known) -> "
             f"{out / 'index.html'}"
         )
+        return 0
+
+    if args.cmd == "watch":
+        from .watch import watch
+
+        res = watch(args.sector, outdir=args.out, state_path=args.state, max_targets=args.max)
+        print(
+            f"sector {res.sector}: scanned {res.scanned}, "
+            f"{len(res.novel)} novel, {res.remaining} remaining"
+        )
+        for rec in sorted(res.novel, key=lambda r: -r.snr):
+            print(f"  NOVEL TIC {rec.tic} S{rec.sector} SNR {rec.snr:.0f} depth {rec.depth_ppt:.2f}ppt")
         return 0
 
     return 1

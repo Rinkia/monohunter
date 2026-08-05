@@ -121,6 +121,49 @@ Stands on [lightkurve](https://docs.lightkurve.org),
 orchestration + the single-transit gap + result aggregation, not a new detection
 engine.
 
+## Fresh-data watcher (be first)
+
+Institutional pipelines take weeks-to-months to vet a new TESS sector. Run the
+watcher on a schedule and you process a sector within hours of its release — and
+a single transit you flag comes with a next-transit window (see below) an
+observer can still act on.
+
+```bash
+monohunter watch --sector 90 --max 100 --out watch_out --state watch_state.json
+```
+
+Each run scans the next `--max` un-processed targets of the sector and prints any
+not-yet-known candidates. It's **resumable**: state tracks which TICs are done,
+so scheduled runs continue where the last stopped and a crash loses nothing.
+
+Schedule it to keep chewing through the sector:
+
+```bash
+# Linux/macOS cron — every 2 hours
+0 */2 * * * cd /path/to/monohunter && monohunter watch --sector 90 --max 200
+
+# Windows: Task Scheduler → run the same command on a trigger
+```
+
+Point `--sector` at the newest released sector. Candidates land in `watch_out/`;
+vet each with `monohunter run --tic <id> --sectors <N>` to get its PNG, then
+submit the good ones (see Contributing).
+
+## Next-transit ephemeris
+
+When a candidate's target has a catalog stellar density, monohunter estimates the
+period from the transit duration and predicts when the next transit could occur:
+
+```
+S19: depth=4.09ppt dur=24h SNR=39.4  [known TOI-2180.01]
+    P~856d (396-1946d, P_min 15d), next transit ~2027-08-07
+```
+
+Single-transit periods are inherently uncertain (a range, not a precise value) —
+the output is a targeting window for follow-up, not a confirmed ephemeris. If the
+stellar density is missing or too uncertain, monohunter reports the period as
+unconstrained rather than guessing.
+
 ## Community leaderboard (swarm)
 
 Submitted candidates are aggregated into one ranked list — deduped by
