@@ -1,6 +1,12 @@
 # Rebuilds the community leaderboard and deploys it to GitHub Pages whenever a
 # contribution lands. One-time setup: repo Settings -> Pages -> Source =
 # "GitHub Actions".
+#
+# Two jobs (build uploads the artifact, deploy publishes it) is the canonical
+# structure — it avoids the "Multiple artifacts named github-pages" error you
+# hit by re-running a single-job Pages run. If a deploy ever fails, re-run only
+# the deploy job, or push/dispatch a fresh run — do NOT re-run an old completed
+# run.
 name: pages
 
 on:
@@ -22,11 +28,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-deploy:
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -37,5 +40,13 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
       - id: deploy
         uses: actions/deploy-pages@v4
