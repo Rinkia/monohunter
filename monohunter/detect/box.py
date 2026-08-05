@@ -48,6 +48,12 @@ GAP_SPAN_FACTOR = 1.5
 # Ramps flank both sides of TESS's mid-sector downlink/momentum-dump gap and
 # masquerade as transits — trim EDGE_TRIM_D around every gap boundary too.
 GAP_THRESHOLD_D = 0.2
+# Scatter-stripe guard: a real transit's in-window points sit coherently below
+# baseline. A scattered-light / momentum-dump stripe scatters points strongly
+# ABOVE baseline too. Reject if more than SCATTER_MAX_FRAC of the window's points
+# exceed baseline by SCATTER_POS_SIGMA (normal noise puts ~0.13% above 3 sigma).
+SCATTER_POS_SIGMA = 3.0
+SCATTER_MAX_FRAC = 0.05
 
 
 class BoxMatchedFilter(Detector):
@@ -130,6 +136,15 @@ class BoxMatchedFilter(Detector):
         expected_span = best_width * dt
         if float(time[hi] - time[lo]) > GAP_SPAN_FACTOR * expected_span:
             return []
+
+        # Scatter-stripe guard: a scattered-light / momentum-dump patch scatters
+        # points strongly ABOVE baseline inside the "dip" window. A real transit
+        # does not. (TIC 137729154 was this — a high-scatter stripe by the gap.)
+        window = flux[lo : hi + 1]
+        if window.size:
+            n_high = int(np.sum(window > 1.0 + SCATTER_POS_SIGMA * sigma))
+            if n_high > SCATTER_MAX_FRAC * window.size:
+                return []
 
         # Isolation guard: is there a SECOND dip nearly as deep, well away from
         # the candidate? A real single transit has none (flat baseline elsewhere).

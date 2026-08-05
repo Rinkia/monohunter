@@ -72,6 +72,17 @@ def test_gap_straddling_candidate_is_rejected():
     assert BoxMatchedFilter().search(time, flux) == []
 
 
+def test_scatter_stripe_is_rejected():
+    # A high-scatter patch with a slightly low mean: the box picks it (high SNR),
+    # but it scatters strongly ABOVE baseline too -> not a coherent transit.
+    time = _time_axis(n=3000)
+    rng = np.random.default_rng(11)
+    flux = 1.0 + rng.normal(0, 5e-4, time.size)
+    s0, s1 = 1450, 1560
+    flux[s0:s1] = 1.0 - 2e-3 + rng.normal(0, 5e-3, s1 - s0)  # low mean, huge scatter
+    assert BoxMatchedFilter().search(time, flux) == []
+
+
 def test_gap_flanking_ramp_is_rejected():
     # A momentum-dump-style ramp on the near side of a gap (not spanning it) —
     # the sweep's dominant FP at Sector 14's mid-sector gap. Must be trimmed.
