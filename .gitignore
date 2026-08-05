@@ -12,4 +12,4 @@ dist/
 mastDownload/
 *.fits
 # candidate outputs (generated)
-candidates/*.png
+candidates/
