@@ -1,0 +1,17 @@
+{
+  "schema_version": 2,
+  "tic": 389971329,
+  "sector": 14,
+  "cadence_s": 120,
+  "event_time_btjd": 1689.9087880522275,
+  "depth_ppt": 0.4721329872157178,
+  "duration_hr": 21.37213316656161,
+  "ingress_hr": 2.023143045190256,
+  "snr": 7.869165052302114,
+  "detrend_method": "biweight",
+  "detrend_window_d": 3.0,
+  "tool_version": "0.1.0",
+  "known_toi_match": false,
+  "known_toi_id": null,
+  "plot_path": "sweep_vet\\tic389971329_s14.png"
+}

@@ -39,6 +39,11 @@ EDGE_TRIM_D = 0.5
 # per-star variability model (Lomb-Scargle prewhitening) would do better but is
 # overkill for v1.
 DEFAULT_MAX_SECONDARY_RATIO = 0.5
+# Gap guard: reject if the box's actual time span exceeds its expected span
+# (width x cadence) by more than this factor — meaning the window straddles a
+# data downlink gap and is averaging temporally-distant cadences. Internal-gap
+# version of the sector-edge ramp guard.
+GAP_SPAN_FACTOR = 1.5
 
 
 class BoxMatchedFilter(Detector):
@@ -100,6 +105,16 @@ class BoxMatchedFilter(Detector):
                 best_i, best_width = i, width
 
         if best is None or best.snr < self.snr_threshold:
+            return []
+
+        # Gap guard: reject if the candidate's box straddles a data downlink gap.
+        # The box averages by index, so a 1-2 day gap inside the window mixes
+        # temporally-distant cadences into a spurious dip (the sweep's gap-edge
+        # false positives). A gap inflates the window's real time span.
+        lo = max(0, best_i - best_width // 2)
+        hi = min(flux.size - 1, best_i + best_width // 2)
+        expected_span = best_width * dt
+        if float(time[hi] - time[lo]) > GAP_SPAN_FACTOR * expected_span:
             return []
 
         # Isolation guard: is there a SECOND dip nearly as deep, well away from

@@ -60,6 +60,29 @@ def test_isolated_transit_survives_guard_on_quiet_star():
     assert len(BoxMatchedFilter().search(time, flux)) == 1
 
 
+def test_gap_straddling_candidate_is_rejected():
+    # A dip at the edge of a 1-day data gap: the box mixes cadences across the
+    # gap into a spurious dip (the sweep's gap-edge false positives).
+    dt = 2.0 / (60 * 24)
+    seg = np.arange(1500) * dt
+    time = np.concatenate([seg, seg[-1] + 1.0 + np.arange(1500) * dt])  # 1-day gap
+    rng = np.random.default_rng(7)
+    flux = 1.0 + rng.normal(0, 5e-4, time.size)
+    flux[1450:1500] -= 5e-3  # low points right at the gap boundary
+    assert BoxMatchedFilter().search(time, flux) == []
+
+
+def test_transit_in_continuous_data_survives_gap_guard():
+    # Same dip, no gap -> box span matches expectation -> kept.
+    dt = 2.0 / (60 * 24)
+    time = np.arange(3000) * dt
+    rng = np.random.default_rng(8)
+    flux = 1.0 + rng.normal(0, 5e-4, time.size)
+    c = time.size // 2
+    flux[c - 360 : c + 360] -= 5e-3
+    assert len(BoxMatchedFilter().search(time, flux)) == 1
+
+
 def test_edge_ramp_is_not_a_candidate():
     # Start-of-sector ramp (no real transit) must NOT fire — the S26 false-positive bug.
     time = _time_axis()
