@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "tic": 298663873,
+  "sector": 19,
+  "cadence_s": 120,
+  "event_time_btjd": 1830.7724144237188,
+  "depth_ppt": 3.6115723188813176,
+  "duration_hr": 24.0,
+  "snr": 165.27616638375048,
+  "detrend_method": "biweight",
+  "detrend_window_d": 3.0,
+  "tool_version": "0.1.0",
+  "known_toi_match": true,
+  "known_toi_id": "TOI-2180.01",
+  "plot_path": "candidates\\tic298663873_s19.png"
+}

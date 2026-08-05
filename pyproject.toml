@@ -12,6 +12,7 @@ license = { text = "MIT" }
 dependencies = [
     "numpy",
     "scipy",
+    "matplotlib",
     "pydantic>=2",
     "lightkurve>=2.5",
     "wotan",
@@ -20,6 +21,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest"]
+
+[project.scripts]
+monohunter = "monohunter.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["monohunter*"]

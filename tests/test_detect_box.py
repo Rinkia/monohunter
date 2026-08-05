@@ -38,6 +38,17 @@ def test_injected_transit_is_recovered():
     assert abs(cand.event_time_btjd - time[center]) < (half + 5) * dt
 
 
+def test_edge_ramp_is_not_a_candidate():
+    # Start-of-sector ramp (no real transit) must NOT fire — the S26 false-positive bug.
+    time = _time_axis()
+    flux = np.ones(time.size)
+    ramp = 300
+    flux[:ramp] = np.linspace(0.995, 1.0, ramp)  # rising ramp at the left edge
+    rng = np.random.default_rng(2)
+    flux += rng.normal(0.0, 5e-4, size=time.size)
+    assert BoxMatchedFilter().search(time, flux) == []
+
+
 def test_short_light_curve_is_safe():
     assert BoxMatchedFilter().search(np.arange(4.0), np.ones(4)) == []
 

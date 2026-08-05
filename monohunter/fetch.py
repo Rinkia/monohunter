@@ -14,10 +14,44 @@ use these come from lightkurve's search table; in tests they're plain dicts.
 
 from __future__ import annotations
 
-from typing import Callable, Iterable, Iterator, Mapping, TypeVar
+import re
+from typing import Any, Callable, Iterable, Iterator, Mapping, TypeVar
 
 Row = Mapping[str, object]
 LC = TypeVar("LC")
+
+
+def _sector_from_mission(value: object) -> int | None:
+    match = re.search(r"Sector\s+(\d+)", str(value))
+    return int(match.group(1)) if match else None
+
+
+def _scalar(value: object) -> float:
+    return float(getattr(value, "value", value))
+
+
+def search_tess(tic: int, author: str = "SPOC") -> tuple[Any, list[Row]]:
+    """Search TESS light curves for a TIC. Returns (SearchResult, rows).
+
+    Prefers SPOC, falls back to QLP (FFI) if SPOC has nothing. Each row carries
+    the SearchResult index so the streaming loader can download it lazily.
+    Network call — not unit-tested; the CLI E2E exercises it live.
+    """
+    import lightkurve as lk
+
+    sr = lk.search_lightcurve(f"TIC {int(tic)}", mission="TESS", author=author)
+    if len(sr) == 0:
+        sr = lk.search_lightcurve(f"TIC {int(tic)}", mission="TESS", author="QLP")
+
+    table = sr.table
+    rows: list[Row] = []
+    for i in range(len(sr)):
+        sector = _sector_from_mission(table["mission"][i])
+        if sector is None:
+            continue
+        cadence = int(round(_scalar(table["exptime"][i])))
+        rows.append({"sector": sector, "cadence_s": cadence, "_index": i})
+    return sr, rows
 
 
 def _preference(cadence_s: int) -> tuple[int, int]:

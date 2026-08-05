@@ -28,6 +28,10 @@ from .base import Candidate, Detector
 DEFAULT_DURATIONS_HR = (2.0, 4.0, 6.0, 8.0, 12.0, 18.0, 24.0, 30.0)
 DEFAULT_SNR_THRESHOLD = 7.0  # SDE-like floor; below this is noise (see TLS best practice)
 _MAD_TO_SIGMA = 1.4826  # MAD -> Gaussian sigma
+# ponytail: trim this much from each end before searching. Start/end-of-sector
+# ramps span hours-to-a-day and masquerade as transits; a box-width-only guard
+# misses ramps wider than the smallest box. Widen if edge FPs persist.
+EDGE_TRIM_D = 0.5
 
 
 class BoxMatchedFilter(Detector):
@@ -61,6 +65,15 @@ class BoxMatchedFilter(Detector):
             if width < 3 or width >= flux.size:
                 continue
             rolling_mean = uniform_filter1d(flux, size=width, mode="nearest")
+            # Edge guard: a box centered at index i spans [i-width/2, i+width/2],
+            # so to keep the whole box clear of the trimmed edge zone (padding +
+            # start/end-of-sector ramps — the S26 TOI-2180 false positive) the
+            # center must sit at least EDGE_TRIM_D + half a box from each end.
+            edge = int(round(EDGE_TRIM_D / dt)) + width // 2
+            if 2 * edge >= rolling_mean.size:
+                continue
+            rolling_mean[:edge] = np.inf
+            rolling_mean[-edge:] = np.inf
             i = int(np.argmin(rolling_mean))
             depth = 1.0 - float(rolling_mean[i])
             if depth <= 0:
