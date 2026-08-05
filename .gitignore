@@ -13,3 +13,5 @@ mastDownload/
 *.fits
 # candidate outputs (generated)
 candidates/
+# generated leaderboard site
+_site/

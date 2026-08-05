@@ -1,7 +1,7 @@
 <!--
 Submitting a mono-transit candidate. Open this template with:
 https://github.com/Rinkia/monohunter/compare?template=candidate.md
-Add ONE JSON file to contributions/ named tic<TIC>_s<SECTOR>.json and attach its PNG below.
+Add ONE JSON file at contributions/<your-username>/tic<TIC>_s<SECTOR>.json and attach its PNG below.
 -->
 
 ## Candidate
@@ -18,7 +18,7 @@ Add ONE JSON file to contributions/ named tic<TIC>_s<SECTOR>.json and attach its
       edge ramp, a data gap, or a single-point spike
 - [ ] SNR ≥ 7 (the tool default)
 - [ ] I re-ran with a different `--window` and the dip still survives
-- [ ] Exactly one JSON in `contributions/`, named `tic<TIC>_s<SECTOR>.json`
+- [ ] Exactly one JSON at `contributions/<my-username>/tic<TIC>_s<SECTOR>.json`
 - [ ] PNG attached below (drag-drop into this PR)
 
 ## Diagnostic plot

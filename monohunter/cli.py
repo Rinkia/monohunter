@@ -10,9 +10,11 @@ import argparse
 import json
 import os
 import sys
+from pathlib import Path
 
 from . import __version__
 from .pipeline import run_target
+from .swarm import aggregate, load_records, render_html, render_json
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -35,6 +37,12 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="restrict to these sector numbers (default: all available)",
     )
+
+    agg = sub.add_parser(
+        "aggregate", help="build the community leaderboard from contributions/"
+    )
+    agg.add_argument("--contributions", default="contributions", help="submissions dir")
+    agg.add_argument("--out", default="_site", help="output dir for leaderboard.json + index.html")
 
     args = parser.parse_args(argv)
 
@@ -60,6 +68,19 @@ def main(argv: list[str] | None = None) -> int:
                 f"S{rec.sector}: depth={rec.depth_ppt:.2f}ppt "
                 f"dur={rec.duration_hr:.0f}h SNR={rec.snr:.1f}{flag} -> {path}"
             )
+        return 0
+
+    if args.cmd == "aggregate":
+        candidates = aggregate(load_records(args.contributions))
+        out = Path(args.out)
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "leaderboard.json").write_text(render_json(candidates), encoding="utf-8")
+        (out / "index.html").write_text(render_html(candidates), encoding="utf-8")
+        novel = sum(1 for c in candidates if c.novel)
+        print(
+            f"{len(candidates)} candidates ({novel} not-yet-known) -> "
+            f"{out / 'index.html'}"
+        )
         return 0
 
     return 1

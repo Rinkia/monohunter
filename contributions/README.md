@@ -1,7 +1,14 @@
 # contributions/
 
-Community-submitted mono-transit candidates. One JSON find-record per file,
-named `tic<TIC>_s<SECTOR>.json` (exactly what `monohunter run` writes).
+Community-submitted mono-transit candidates, one JSON find-record per file
+under your own submitter folder:
+
+```
+contributions/<your-github-username>/tic<TIC>_s<SECTOR>.json
+```
+
+The filename is exactly what `monohunter run` writes; the username subfolder is
+what lets the leaderboard count independent submitters per candidate.
 
 **This is a candidate list, not a discovery list.** A record here means "a
 human looked at the light curve and thinks the dip is real." Confirming a planet

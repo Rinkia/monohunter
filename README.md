@@ -121,11 +121,32 @@ Stands on [lightkurve](https://docs.lightkurve.org),
 orchestration + the single-transit gap + result aggregation, not a new detection
 engine.
 
+## Community leaderboard (swarm)
+
+Submitted candidates are aggregated into one ranked list — deduped by
+`(tic, sector)`, ranked by novelty (not a known TOI), cross-submitter agreement,
+and SNR. Live at **https://rinkia.github.io/monohunter/**, rebuilt automatically
+on every merged contribution.
+
+Build it yourself from a `contributions/` tree:
+
+```bash
+monohunter aggregate --contributions contributions --out _site
+# writes _site/index.html + _site/leaderboard.json
+```
+
+This is phase 1 of the swarm: pure aggregation over the PR flow, no backend. A
+live coordination server (handing out targets so no two people search the same
+star) is a later increment, worth building only once there's real contention.
+
+One-time to publish: repo **Settings → Pages → Source = "GitHub Actions"**
+(the `pages.yml` workflow does the rest).
+
 ## Contributing
 
 Found a candidate, or want to improve the detector? See
 [CONTRIBUTING.md](CONTRIBUTING.md). Candidate submissions go to
-[`contributions/`](contributions/) via the
+[`contributions/<username>/`](contributions/) via the
 [candidate PR template](https://github.com/Rinkia/monohunter/compare?template=candidate.md).
 
 ## Development
