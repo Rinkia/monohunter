@@ -38,6 +38,7 @@ class AggregatedCandidate:
     known_toi_match: bool = False
     known_toi_id: str | None = None
     p_best_d: float | None = None          # best submitter's period estimate
+    likely_eb: bool = False                # depth-flagged eclipsing binary
 
     @property
     def n_submitters(self) -> int:
@@ -94,6 +95,7 @@ def aggregate(submissions: list[_Submission]) -> list[AggregatedCandidate]:
                 known_toi_match=any(r.known_toi_match for r in recs),
                 known_toi_id=next((r.known_toi_id for r in recs if r.known_toi_id), None),
                 p_best_d=best_rec.p_best_d if best_rec.period_constrained else None,
+                likely_eb=any(bool(r.likely_eb) for r in recs),
             )
         )
 
@@ -116,6 +118,7 @@ def render_json(candidates: list[AggregatedCandidate]) -> str:
                 "median_depth_ppt": round(c.median_depth_ppt, 2),
                 "median_duration_hr": round(c.median_duration_hr, 1),
                 "period_d": round(c.p_best_d) if c.p_best_d else None,
+                "likely_eb": c.likely_eb,
                 "known_toi_id": c.known_toi_id,
             }
             for c in candidates
@@ -133,6 +136,8 @@ def render_html(candidates: list[AggregatedCandidate]) -> str:
             if c.novel
             else f'<span class="known">{html.escape(c.known_toi_id or "known")}</span>'
         )
+        if c.likely_eb:
+            badge += ' <span class="eb">EB?</span>'
         rows.append(
             "<tr>"
             f"<td>{badge}</td>"
@@ -165,6 +170,7 @@ _HTML_TEMPLATE = """<!doctype html>
   th {{ font-size: 13px; text-transform: uppercase; letter-spacing: .03em; color: #888; }}
   .novel {{ background: #0a7d2c; color: #fff; padding: .1rem .4rem; border-radius: 3px; font-size: 12px; font-weight: 600; }}
   .known {{ background: #eee; color: #555; padding: .1rem .4rem; border-radius: 3px; font-size: 12px; }}
+  .eb {{ background: #b8860b; color: #fff; padding: .1rem .4rem; border-radius: 3px; font-size: 12px; }}
   a {{ color: #0a5; }}
 </style>
 </head>
@@ -181,8 +187,9 @@ _HTML_TEMPLATE = """<!doctype html>
 {rows}
 </tbody>
 </table>
-<p class="meta">NEW = not a known TESS Object of Interest. A candidate is not a
-confirmed planet — it needs follow-up.</p>
+<p class="meta">NEW = not a known TESS Object of Interest. EB? = too deep for a
+planet, likely an eclipsing binary. A candidate is not a confirmed planet — it
+needs follow-up.</p>
 </body>
 </html>
 """

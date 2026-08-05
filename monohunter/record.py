@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-SCHEMA_VERSION = 3  # v3 adds ephemeris: stellar density + period posterior + next-transit window
+SCHEMA_VERSION = 4  # v4 adds likely_eb (depth-based eclipsing-binary flag)
 
 
 class FindRecord(BaseModel):
@@ -35,6 +35,7 @@ class FindRecord(BaseModel):
     known_toi_match: bool = False
     known_toi_id: str | None = None
     plot_path: str | None = None
+    likely_eb: bool | None = None      # depth too deep for a planet → eclipsing binary
 
     # v3 ephemeris (present when the period could be constrained)
     stellar_density_cgs: float | None = None

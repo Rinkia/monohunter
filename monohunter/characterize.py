@@ -20,6 +20,17 @@ import numpy as np
 from scipy.optimize import curve_fit
 
 
+# A transiting planet's depth tops out near ~3% (a giant on a small star);
+# anything deeper is almost certainly a star eclipsing a star. ponytail: depth
+# alone; V-shape (ingress≈duration) and a secondary eclipse would refine it.
+EB_DEPTH_THRESHOLD_PPT = 30.0
+
+
+def is_likely_eb(depth_ppt: float) -> bool:
+    """Depth too deep for a planet → likely an eclipsing binary. Labels, not rejects."""
+    return depth_ppt > EB_DEPTH_THRESHOLD_PPT
+
+
 @dataclass(frozen=True)
 class TrapezoidFit:
     t0_btjd: float

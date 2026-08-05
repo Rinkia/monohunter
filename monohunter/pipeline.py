@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from . import __version__
-from .characterize import fit_trapezoid
+from .characterize import fit_trapezoid, is_likely_eb
 from .crossmatch import known_toi
 from .detect import BoxMatchedFilter, Detector
 from .detrend import DEFAULT_METHOD, DEFAULT_WINDOW_D, flatten
@@ -114,6 +114,7 @@ def run_target(
                 tool_version=__version__,
                 known_toi_match=is_known,
                 known_toi_id=toi_id,
+                likely_eb=is_likely_eb(depth_ppt),
             )
             # Ephemeris: constrain the period + predict the next transit.
             post = estimate_period(

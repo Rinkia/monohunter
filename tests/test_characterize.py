@@ -2,7 +2,19 @@
 
 import numpy as np
 
-from monohunter.characterize import _trapezoid, fit_trapezoid
+from monohunter.characterize import (
+    EB_DEPTH_THRESHOLD_PPT,
+    _trapezoid,
+    fit_trapezoid,
+    is_likely_eb,
+)
+
+
+def test_is_likely_eb_depth_threshold():
+    assert is_likely_eb(87.6) is True      # 8.8% -> eclipsing binary
+    assert is_likely_eb(4.1) is False      # planet-depth transit
+    assert is_likely_eb(EB_DEPTH_THRESHOLD_PPT + 1) is True
+    assert is_likely_eb(EB_DEPTH_THRESHOLD_PPT - 1) is False
 
 
 def _time_axis(n=3000):

@@ -77,6 +77,7 @@ def test_run_target_builds_valid_record(monkeypatch, tmp_path):
     assert rec.plot_path is not None
     # ephemeris populated (ρ* supplied)
     assert rec.stellar_density_cgs == 0.3
+    assert rec.likely_eb is False          # 6 ppt dip is planet-depth, not an EB
     assert rec.period_constrained is True
     assert rec.p_best_d and rec.p_best_d > rec.p_min_d
     assert rec.next_window_btjd and len(rec.next_window_btjd) == 3

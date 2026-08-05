@@ -6,7 +6,7 @@ from monohunter.record import FindRecord
 from monohunter.swarm import aggregate, load_records, render_html, render_json
 
 
-def _rec(tic, sector, snr, known=False, toi=None, depth=4.0, dur=24.0):
+def _rec(tic, sector, snr, known=False, toi=None, depth=4.0, dur=24.0, likely_eb=False):
     return FindRecord(
         tic=tic,
         sector=sector,
@@ -20,6 +20,7 @@ def _rec(tic, sector, snr, known=False, toi=None, depth=4.0, dur=24.0):
         tool_version="0.1.0",
         known_toi_match=known,
         known_toi_id=toi,
+        likely_eb=likely_eb,
     )
 
 
@@ -62,6 +63,14 @@ def test_render_json_and_html(tmp_path):
     h = render_html(cands)
     assert "111" in h
     assert "NEW" in h  # novel badge
+
+
+def test_eb_flag_renders_badge(tmp_path):
+    _write(tmp_path, "alice", _rec(999, 3, 113.0, depth=87.0, likely_eb=True))
+    cands = aggregate(load_records(tmp_path / "contributions"))
+    assert cands[0].likely_eb is True
+    assert json.loads(render_json(cands))["candidates"][0]["likely_eb"] is True
+    assert "EB?" in render_html(cands)
 
 
 def test_skips_invalid_json(tmp_path):
