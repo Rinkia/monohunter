@@ -1,6 +1,57 @@
 """T4 tests — sector dedup (prefer 2-min) and streaming, no network."""
 
-from monohunter.fetch import iter_lightcurves, resolve_sectors
+from monohunter.fetch import (
+    DEFAULT_QUALITY_BITMASK,
+    download_lightcurve,
+    iter_lightcurves,
+    resolve_sectors,
+)
+
+
+class _FakeLC:
+    def remove_nans(self):
+        return self
+
+    def normalize(self):
+        return self
+
+
+class _FakeEntry:
+    """download() accepts quality_bitmask and records it."""
+
+    def __init__(self, sink):
+        self._sink = sink
+
+    def download(self, quality_bitmask=None):
+        self._sink["bitmask"] = quality_bitmask
+        return _FakeLC()
+
+
+class _FakeEntryNoBitmask:
+    """download() has no quality_bitmask param — passing it raises TypeError."""
+
+    def download(self):
+        return _FakeLC()
+
+
+class _FakeSR:
+    def __init__(self, entry):
+        self._entry = entry
+
+    def __getitem__(self, index):
+        return self._entry
+
+
+def test_download_applies_hard_quality_bitmask():
+    sink = {}
+    download_lightcurve(_FakeSR(_FakeEntry(sink)), 0)
+    assert sink["bitmask"] == DEFAULT_QUALITY_BITMASK == "hard"
+
+
+def test_download_falls_back_when_bitmask_unsupported():
+    # A product whose download() rejects the kwarg must still work, not crash.
+    result = download_lightcurve(_FakeSR(_FakeEntryNoBitmask()), 0)
+    assert result is not None
 
 
 def test_prefers_2min_and_dedups_by_sector():

@@ -21,9 +21,31 @@ Row = Mapping[str, object]
 LC = TypeVar("LC")
 
 
+# "hard" drops cadences flagged for scattered light, momentum dumps, and other
+# bad-quality events. lightkurve's default ("default") leaves narrow artifacts
+# that the box scan can mistake for dips. "hardest" over-trims real data.
+DEFAULT_QUALITY_BITMASK = "hard"
+
+
 def _sector_from_mission(value: object) -> int | None:
     match = re.search(r"Sector\s+(\d+)", str(value))
     return int(match.group(1)) if match else None
+
+
+def download_lightcurve(
+    search_result: Any, index: int, quality_bitmask: str = DEFAULT_QUALITY_BITMASK
+) -> Any:
+    """Download one row, quality-masked, NaN-stripped, normalized.
+
+    Centralizes data cleaning in the fetch layer. Falls back to a plain download
+    if a product doesn't accept quality_bitmask (e.g. some FFI products).
+    """
+    entry = search_result[index]
+    try:
+        lc = entry.download(quality_bitmask=quality_bitmask)
+    except TypeError:
+        lc = entry.download()
+    return lc.remove_nans().normalize()
 
 
 def _scalar(value: object) -> float:

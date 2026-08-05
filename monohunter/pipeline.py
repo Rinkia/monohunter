@@ -19,7 +19,7 @@ from . import __version__
 from .crossmatch import known_toi
 from .detect import BoxMatchedFilter, Detector
 from .detrend import DEFAULT_METHOD, DEFAULT_WINDOW_D, flatten
-from .fetch import iter_lightcurves, search_tess
+from .fetch import download_lightcurve, iter_lightcurves, search_tess
 from .record import FindRecord
 
 
@@ -61,7 +61,7 @@ def run_target(
     is_known, toi_id = known_toi(tic)
 
     def download(row: dict) -> object:
-        return sr[row["_index"]].download().remove_nans().normalize()
+        return download_lightcurve(sr, row["_index"])
 
     records: list[FindRecord] = []
     for row, lc in iter_lightcurves(rows, download):
