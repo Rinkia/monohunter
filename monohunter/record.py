@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2  # v2 adds ingress_hr; depth_ppt/duration_hr now trapezoid-refined
 
 
 class FindRecord(BaseModel):
@@ -24,7 +24,10 @@ class FindRecord(BaseModel):
     cadence_s: int = Field(..., description="120 (2-min) or 20 (20-sec)")
     event_time_btjd: float = Field(..., description="dip center, TESS BTJD")
     depth_ppt: float = Field(..., ge=0, description="transit depth, parts per thousand")
-    duration_hr: float = Field(..., gt=0)
+    duration_hr: float = Field(..., gt=0, description="T14, first-to-last contact")
+    ingress_hr: float | None = Field(
+        None, description="ingress/egress time from trapezoid fit; None if uncharacterized"
+    )
     snr: float = Field(..., ge=0)
     detrend_method: str
     detrend_window_d: float = Field(..., gt=0)

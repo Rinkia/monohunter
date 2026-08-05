@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from . import __version__
+from .characterize import fit_trapezoid
 from .crossmatch import known_toi
 from .detect import BoxMatchedFilter, Detector
 from .detrend import DEFAULT_METHOD, DEFAULT_WINDOW_D, flatten
@@ -69,13 +70,30 @@ def run_target(
         flux = _values(lc.flux)
         flat, _ = flatten(time, flux, window_length=window_length)
         for cand in detector.search(time, flat):
+            # Refine box depth/duration with a trapezoid fit (box dilutes depth).
+            fit = fit_trapezoid(time, flat, cand.event_time_btjd, cand.duration_hr)
+            if fit is not None:
+                t0, depth_ppt, duration_hr, ingress_hr = (
+                    fit.t0_btjd,
+                    fit.depth_ppt,
+                    fit.duration_hr,
+                    fit.ingress_hr,
+                )
+            else:
+                t0, depth_ppt, duration_hr, ingress_hr = (
+                    cand.event_time_btjd,
+                    cand.depth_ppt,
+                    cand.duration_hr,
+                    None,
+                )
             rec = FindRecord(
                 tic=int(tic),
                 sector=int(row["sector"]),
                 cadence_s=int(row["cadence_s"]),
-                event_time_btjd=cand.event_time_btjd,
-                depth_ppt=cand.depth_ppt,
-                duration_hr=cand.duration_hr,
+                event_time_btjd=t0,
+                depth_ppt=depth_ppt,
+                duration_hr=duration_hr,
+                ingress_hr=ingress_hr,
                 snr=cand.snr,
                 detrend_method=DEFAULT_METHOD,
                 detrend_window_d=window_length,
