@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "monohunter"
+version = "0.1.0"
+description = "Find single long-period (mono-)transits in public TESS light curves that periodic pipelines under-find."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "numpy",
+    "scipy",
+    "pydantic>=2",
+    "lightkurve>=2.5",
+    "wotan",
+    "astroquery",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+include = ["monohunter*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
