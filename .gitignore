@@ -15,3 +15,7 @@ mastDownload/
 candidates/
 # generated leaderboard site
 _site/
+# local sweep scan logs + vetting output
+sweeps/
+sweep_out/
+sweep_vet*/
