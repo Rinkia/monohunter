@@ -1,0 +1,41 @@
+# Publishes to PyPI on a version tag (e.g. `git tag v0.1.0 && git push --tags`).
+# Uses PyPI Trusted Publishing (OIDC) — no API token stored in GitHub.
+# ONE-TIME PyPI setup required before the first release: see README / the
+# "PyPI Trusted Publishing setup" note. Until that's done, this job will fail
+# at the publish step (build still succeeds).
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade build
+      - run: python -m build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi          # optional GitHub environment gate (see README note)
+    permissions:
+      id-token: write          # required for Trusted Publishing OIDC
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

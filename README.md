@@ -43,6 +43,30 @@ pip install -e ".[dev]"
 pytest -q
 ```
 
+## Releasing to PyPI
+
+CI (`.github/workflows/ci.yml`) runs the tests on every push. Publishing
+(`.github/workflows/release.yml`) fires on a version tag and uses **Trusted
+Publishing** — no token in GitHub.
+
+One-time PyPI setup (before the first release):
+
+1. On PyPI: Account → Publishing → **Add a pending publisher**:
+   - PyPI project name: `monohunter`
+   - Owner: `Rinkia`  ·  Repository: `monohunter`
+   - Workflow: `release.yml`  ·  Environment: `pypi`
+2. (Optional) On GitHub: create an Environment named `pypi` (Settings →
+   Environments) for a manual approval gate. Remove the `environment: pypi`
+   line in `release.yml` to skip.
+
+Then release:
+
+```bash
+# bump version in pyproject.toml first
+git tag v0.1.0
+git push --tags
+```
+
 ## License
 
 MIT.
