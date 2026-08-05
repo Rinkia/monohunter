@@ -72,6 +72,18 @@ def test_gap_straddling_candidate_is_rejected():
     assert BoxMatchedFilter().search(time, flux) == []
 
 
+def test_gap_flanking_ramp_is_rejected():
+    # A momentum-dump-style ramp on the near side of a gap (not spanning it) —
+    # the sweep's dominant FP at Sector 14's mid-sector gap. Must be trimmed.
+    dt = 2.0 / (60 * 24)
+    seg = np.arange(1500) * dt
+    time = np.concatenate([seg, seg[-1] + 1.0 + np.arange(1500) * dt])  # 1-day gap
+    rng = np.random.default_rng(9)
+    flux = 1.0 + rng.normal(0, 5e-4, time.size)
+    flux[1470:1500] = np.linspace(1.0, 0.994, 30)  # ramp down INTO the gap
+    assert BoxMatchedFilter().search(time, flux) == []
+
+
 def test_transit_in_continuous_data_survives_gap_guard():
     # Same dip, no gap -> box span matches expectation -> kept.
     dt = 2.0 / (60 * 24)

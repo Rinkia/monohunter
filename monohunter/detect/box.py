@@ -44,6 +44,10 @@ DEFAULT_MAX_SECONDARY_RATIO = 0.5
 # data downlink gap and is averaging temporally-distant cadences. Internal-gap
 # version of the sector-edge ramp guard.
 GAP_SPAN_FACTOR = 1.5
+# A jump larger than this (days) between consecutive cadences is a data gap.
+# Ramps flank both sides of TESS's mid-sector downlink/momentum-dump gap and
+# masquerade as transits — trim EDGE_TRIM_D around every gap boundary too.
+GAP_THRESHOLD_D = 0.2
 
 
 class BoxMatchedFilter(Detector):
@@ -73,6 +77,12 @@ class BoxMatchedFilter(Detector):
         if sigma <= 0:
             return []
 
+        # Times bordering every internal data gap. Ramps flank both sides of the
+        # mid-sector downlink/momentum-dump gap and masquerade as transits (the
+        # sweep's dominant false positive at BTJD ~1696 in Sector 14).
+        gaps = np.where(np.diff(time) > GAP_THRESHOLD_D)[0]
+        gap_border_times = np.concatenate([time[gaps], time[gaps + 1]]) if gaps.size else np.empty(0)
+
         best: Candidate | None = None
         best_i = 0
         best_width = 0
@@ -90,6 +100,10 @@ class BoxMatchedFilter(Detector):
                 continue
             rolling_mean[:edge] = np.inf
             rolling_mean[-edge:] = np.inf
+            # Same trim around every internal gap boundary (both sides).
+            margin_t = EDGE_TRIM_D + (width // 2) * dt
+            for border in gap_border_times:
+                rolling_mean[np.abs(time - border) < margin_t] = np.inf
             i = int(np.argmin(rolling_mean))
             depth = 1.0 - float(rolling_mean[i])
             if depth <= 0:
