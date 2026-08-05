@@ -43,6 +43,13 @@ pip install -e ".[dev]"
 pytest -q
 ```
 
+## Contributing
+
+Found a candidate, or want to improve the detector? See
+[CONTRIBUTING.md](CONTRIBUTING.md). Candidate submissions go to
+[`contributions/`](contributions/) via the
+[candidate PR template](https://github.com/Rinkia/monohunter/compare?template=candidate.md).
+
 ## Releasing to PyPI
 
 CI (`.github/workflows/ci.yml`) runs the tests on every push. Publishing
