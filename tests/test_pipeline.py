@@ -45,7 +45,7 @@ class _FakeSR:
 
 def _lc_with_dip():
     dt = 2.0 / (60 * 24)  # 2-min cadence in days
-    time = np.arange(2000) * dt
+    time = np.arange(15000) * dt  # realistic ~21-day sector length
     rng = np.random.default_rng(3)
     flux = 1.0 + rng.normal(0, 5e-4, size=time.size)
     c = time.size // 2

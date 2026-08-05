@@ -25,7 +25,7 @@ def test_recovers_toi2180_single_transit():
 
     # The real transit: deep, long, high-SNR, in S19.
     assert best.sector == TRANSIT_SECTOR
-    assert best.snr > 50.0            # actual ~165; comfortably clears the floor
+    assert best.snr > 25.0            # red-noise-aware SNR ~45; well clear of the 7 floor
     assert 12.0 <= best.duration_hr <= 30.0
     assert best.depth_ppt > 1.0
 

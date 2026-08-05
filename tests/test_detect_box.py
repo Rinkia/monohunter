@@ -5,7 +5,9 @@ import numpy as np
 from monohunter.detect import BoxMatchedFilter, Candidate
 
 
-def _time_axis(n=2000, cadence_min=2.0):
+def _time_axis(n=15000, cadence_min=2.0):
+    # ~21-day light curve at 2-min cadence — realistic TESS sector length, so the
+    # red-noise box-scatter estimate has enough independent box-means to be stable.
     dt = cadence_min / (60.0 * 24.0)  # days
     return np.arange(n) * dt
 
@@ -38,6 +40,19 @@ def test_injected_transit_is_recovered():
     assert abs(cand.event_time_btjd - time[center]) < (half + 5) * dt
 
 
+def test_red_noise_wander_is_rejected():
+    # Correlated (red-noise) wander, no real transit. White-noise SNR would
+    # over-rate a trough; the red-noise-aware SNR (depth / box-averaged scatter)
+    # must not — the box-averaged series itself scatters a lot. (TIC 137729154 /
+    # 233711539 were this class.)
+    time = _time_axis(n=15000)
+    rng = np.random.default_rng(12)
+    walk = np.cumsum(rng.normal(0, 1.0, time.size))
+    walk = (walk - walk.mean()) / walk.std() * 3e-3  # ~3 ppt correlated wander
+    flux = 1.0 + walk + rng.normal(0, 3e-4, time.size)
+    assert BoxMatchedFilter().search(time, flux) == []
+
+
 def test_variable_star_is_rejected():
     # Continuous ~2% oscillation over many cycles, no flat baseline (the
     # TIC 17308640 case). Every trough is as deep as the deepest, so the
@@ -64,21 +79,21 @@ def test_gap_straddling_candidate_is_rejected():
     # A dip at the edge of a 1-day data gap: the box mixes cadences across the
     # gap into a spurious dip (the sweep's gap-edge false positives).
     dt = 2.0 / (60 * 24)
-    seg = np.arange(1500) * dt
-    time = np.concatenate([seg, seg[-1] + 1.0 + np.arange(1500) * dt])  # 1-day gap
+    seg = np.arange(7500) * dt
+    time = np.concatenate([seg, seg[-1] + 1.0 + np.arange(7500) * dt])  # 1-day gap
     rng = np.random.default_rng(7)
     flux = 1.0 + rng.normal(0, 5e-4, time.size)
-    flux[1450:1500] -= 5e-3  # low points right at the gap boundary
+    flux[7450:7500] -= 5e-3  # low points right at the gap boundary
     assert BoxMatchedFilter().search(time, flux) == []
 
 
 def test_scatter_stripe_is_rejected():
     # A high-scatter patch with a slightly low mean: the box picks it (high SNR),
     # but it scatters strongly ABOVE baseline too -> not a coherent transit.
-    time = _time_axis(n=3000)
+    time = _time_axis()
     rng = np.random.default_rng(11)
     flux = 1.0 + rng.normal(0, 5e-4, time.size)
-    s0, s1 = 1450, 1560
+    s0, s1 = 7000, 7110
     flux[s0:s1] = 1.0 - 2e-3 + rng.normal(0, 5e-3, s1 - s0)  # low mean, huge scatter
     assert BoxMatchedFilter().search(time, flux) == []
 
@@ -87,18 +102,17 @@ def test_gap_flanking_ramp_is_rejected():
     # A momentum-dump-style ramp on the near side of a gap (not spanning it) —
     # the sweep's dominant FP at Sector 14's mid-sector gap. Must be trimmed.
     dt = 2.0 / (60 * 24)
-    seg = np.arange(1500) * dt
-    time = np.concatenate([seg, seg[-1] + 1.0 + np.arange(1500) * dt])  # 1-day gap
+    seg = np.arange(7500) * dt
+    time = np.concatenate([seg, seg[-1] + 1.0 + np.arange(7500) * dt])  # 1-day gap
     rng = np.random.default_rng(9)
     flux = 1.0 + rng.normal(0, 5e-4, time.size)
-    flux[1470:1500] = np.linspace(1.0, 0.994, 30)  # ramp down INTO the gap
+    flux[7470:7500] = np.linspace(1.0, 0.994, 30)  # ramp down INTO the gap
     assert BoxMatchedFilter().search(time, flux) == []
 
 
 def test_transit_in_continuous_data_survives_gap_guard():
     # Same dip, no gap -> box span matches expectation -> kept.
-    dt = 2.0 / (60 * 24)
-    time = np.arange(3000) * dt
+    time = _time_axis()
     rng = np.random.default_rng(8)
     flux = 1.0 + rng.normal(0, 5e-4, time.size)
     c = time.size // 2

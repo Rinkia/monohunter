@@ -26,7 +26,7 @@ from .base import Candidate, Detector
 # ponytail: fixed duration grid tuned for long/single transits (hours). Widen if
 # you start hunting shorter events.
 DEFAULT_DURATIONS_HR = (2.0, 4.0, 6.0, 8.0, 12.0, 18.0, 24.0, 30.0)
-DEFAULT_SNR_THRESHOLD = 7.0  # SDE-like floor; below this is noise (see TLS best practice)
+DEFAULT_SNR_THRESHOLD = 7.0  # depth / box-averaged-series scatter (red-noise aware); TLS-style floor
 _MAD_TO_SIGMA = 1.4826  # MAD -> Gaussian sigma
 # ponytail: trim this much from each end before searching. Start/end-of-sector
 # ramps span hours-to-a-day and masquerade as transits; a box-width-only guard
@@ -114,7 +114,19 @@ class BoxMatchedFilter(Detector):
             depth = 1.0 - float(rolling_mean[i])
             if depth <= 0:
                 continue
-            snr = depth / (sigma / np.sqrt(width))
+            # Red-noise-aware SNR: instead of assuming white-noise averaging
+            # (sigma/sqrt(width)), MEASURE the scatter of the box-averaged series
+            # (robust MAD, which tolerates the narrow transit). On a quiet star
+            # this equals sigma/sqrt(width); on a wandering (red-noise) star the
+            # box-averaged series scatters a lot, so the effective SNR honestly
+            # collapses — killing red-noise false positives.
+            finite = rolling_mean[np.isfinite(rolling_mean)]
+            box_scatter = _MAD_TO_SIGMA * float(
+                np.median(np.abs(finite - np.median(finite)))
+            )
+            if box_scatter <= 0:
+                continue
+            snr = depth / box_scatter
             if best is None or snr > best.snr:
                 best = Candidate(
                     event_time_btjd=float(time[i]),
