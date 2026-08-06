@@ -54,6 +54,17 @@ GAP_THRESHOLD_D = 0.2
 # exceed baseline by SCATTER_POS_SIGMA (normal noise puts ~0.13% above 3 sigma).
 SCATTER_POS_SIGMA = 3.0
 SCATTER_MAX_FRAC = 0.05
+# Scatter-region guard (#7): the box-window scatter check (#6) misses the case
+# where the box lands just BESIDE a momentum-dump / scattered-light patch — the
+# sweep's dominant residual false positive (the ~BTJD 1696 Sector-14 ramp).
+# Generalize it: a real transit's ~day-wide NEIGHBORHOOD is quiet apart from its
+# own downward dip, while an instrumental patch scatters points ABOVE baseline
+# across the whole region. Reject if too many neighborhood points sit above +Nσ.
+# Data-driven (uses the sector's own robust sigma, which a localized patch barely
+# shifts) and general — no per-sector / per-BTJD hardcoding. Directional (upward
+# only) so a deep real transit is never rejected by its own dip.
+SCATTER_REGION_D = 1.0          # neighborhood half-width, days
+SCATTER_REGION_MAX_FRAC = 0.04  # max fraction of neighborhood points above +Nσ
 
 
 class BoxMatchedFilter(Detector):
@@ -156,6 +167,15 @@ class BoxMatchedFilter(Detector):
         if window.size:
             n_high = int(np.sum(window > 1.0 + SCATTER_POS_SIGMA * sigma))
             if n_high > SCATTER_MAX_FRAC * window.size:
+                return []
+
+        # Scatter-region guard (#7): widen the same upward-outlier test to the
+        # event's day-wide neighborhood. Catches a box that dodged the worst
+        # scatter but still sits inside an instrumental high-variance patch.
+        neigh = flux[np.abs(time - best.event_time_btjd) < SCATTER_REGION_D]
+        if neigh.size >= 20:
+            n_high = int(np.sum(neigh > 1.0 + SCATTER_POS_SIGMA * sigma))
+            if n_high > SCATTER_REGION_MAX_FRAC * neigh.size:
                 return []
 
         # Isolation guard: is there a SECOND dip nearly as deep, well away from

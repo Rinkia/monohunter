@@ -98,6 +98,33 @@ def test_scatter_stripe_is_rejected():
     assert BoxMatchedFilter().search(time, flux) == []
 
 
+def test_scatter_region_beside_clean_dip_is_rejected():
+    # A clean box dip (which alone IS recovered) sitting next to a broad upward-
+    # scatter patch within ~1 day. The dip's own box is clean (passes guard #6),
+    # but its neighborhood is an instrumental high-variance region -> guard #7
+    # rejects. This is the ~1696 momentum-dump residual class in synthetic form.
+    time = _time_axis()
+    dt = time[1] - time[0]
+    center = time.size // 2
+    half = int((0.5 / 24.0) / dt) * 24  # ~24h box
+
+    rng = np.random.default_rng(21)
+    base = 1.0 + rng.normal(0, 5e-4, time.size)
+    base[center - half : center + half] -= 5e-3  # clean, coherent dip
+
+    # Control: the clean dip on its own is a valid detection.
+    assert len(BoxMatchedFilter().search(time, base.copy())) == 1
+
+    # Add a broad UPWARD-scatter patch ~0.5 day before the dip (within 1-day
+    # neighborhood, outside the dip's own box). Mean stays ~1 so the box still
+    # picks the dip, not the patch.
+    flux = base.copy()
+    p1 = center - half - 100
+    p0 = p1 - 400
+    flux[p0:p1] += np.abs(rng.normal(0, 5e-3, p1 - p0))  # up-only outliers
+    assert BoxMatchedFilter().search(time, flux) == []
+
+
 def test_gap_flanking_ramp_is_rejected():
     # A momentum-dump-style ramp on the near side of a gap (not spanning it) —
     # the sweep's dominant FP at Sector 14's mid-sector gap. Must be trimmed.
