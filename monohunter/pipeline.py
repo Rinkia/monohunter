@@ -21,7 +21,15 @@ from .crossmatch import known_toi
 from .detect import BoxMatchedFilter, Detector
 from .detrend import DEFAULT_METHOD, DEFAULT_WINDOW_D, flatten
 from .ephemeris import estimate_period
-from .fetch import download_lightcurve, get_stellar_density, iter_lightcurves, search_tess
+from .fetch import (
+    cadence_seconds,
+    download_ffi_lightcurve,
+    download_lightcurve,
+    get_stellar_density,
+    iter_lightcurves,
+    search_tess,
+    search_tesscut,
+)
 from .record import FindRecord
 
 _BTJD_OFFSET = 2457000.0  # BTJD = BJD - 2457000
@@ -61,27 +69,39 @@ def run_target(
     outdir: str = "candidates",
     make_plots: bool = True,
     sectors: list[int] | None = None,
+    source: str = "spoc",
 ) -> list[FindRecord]:
     """Search deduped sectors of one TIC; return validated candidate records.
 
     sectors: restrict to these sector numbers (None = all available).
+    source: "spoc" (pre-made 2-min/QLP light curves) or "ffi" (extract from the
+    Full-Frame Images via TESScut — reaches stars with no pre-made light curve).
     """
     detector = detector or BoxMatchedFilter()
-    sr, rows = search_tess(tic)
-    if sectors is not None:
-        wanted = set(sectors)
-        rows = [r for r in rows if int(r["sector"]) in wanted]
+    wanted = set(sectors) if sectors is not None else None
+    if source == "ffi":
+        sr, rows = search_tesscut(tic, sectors=wanted)
+
+        def download(row: dict) -> object:
+            return download_ffi_lightcurve(sr, row["_index"])
+    else:
+        sr, rows = search_tess(tic)
+        if wanted is not None:
+            rows = [r for r in rows if int(r["sector"]) in wanted]
+
+        def download(row: dict) -> object:
+            return download_lightcurve(sr, row["_index"])
+
     is_known, toi_id = known_toi(tic)
     rho_cgs, rho_err_cgs = get_stellar_density(tic)
     now_btjd = _now_btjd()
-
-    def download(row: dict) -> object:
-        return download_lightcurve(sr, row["_index"])
 
     records: list[FindRecord] = []
     for row, lc in iter_lightcurves(rows, download):
         time = _values(lc.time.value if hasattr(lc.time, "value") else lc.time)
         flux = _values(lc.flux)
+        # SPOC rows carry cadence from the search table; FFI rows are 0 -> measure it.
+        cadence_s = int(row["cadence_s"]) or cadence_seconds(time)
         flat, _ = flatten(time, flux, window_length=window_length)
         for cand in detector.search(time, flat):
             # Refine box depth/duration with a trapezoid fit (box dilutes depth).
@@ -103,7 +123,7 @@ def run_target(
             rec = FindRecord(
                 tic=int(tic),
                 sector=int(row["sector"]),
-                cadence_s=int(row["cadence_s"]),
+                cadence_s=cadence_s,
                 event_time_btjd=t0,
                 depth_ppt=depth_ppt,
                 duration_hr=duration_hr,

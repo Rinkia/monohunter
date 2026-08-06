@@ -47,6 +47,12 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="restrict to these sector numbers (default: all available)",
     )
+    run.add_argument(
+        "--ffi",
+        action="store_true",
+        help="extract from TESS Full-Frame Images via TESScut (reaches stars with "
+        "no pre-made SPOC/QLP light curve); cadence is measured from the data",
+    )
 
     agg = sub.add_parser(
         "aggregate", help="build the community leaderboard from contributions/"
@@ -71,6 +77,7 @@ def main(argv: list[str] | None = None) -> int:
             outdir=args.outdir,
             make_plots=not args.no_plot,
             sectors=args.sectors,
+            source="ffi" if args.ffi else "spoc",
         )
         if not records:
             print(f"No candidates for TIC {args.tic} (nothing above SNR threshold).")

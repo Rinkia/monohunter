@@ -17,6 +17,8 @@ from __future__ import annotations
 import re
 from typing import Any, Callable, Iterable, Iterator, Mapping, TypeVar
 
+import numpy as np
+
 Row = Mapping[str, object]
 LC = TypeVar("LC")
 
@@ -117,6 +119,72 @@ def search_tess(tic: int, author: str = "SPOC") -> tuple[Any, list[Row]]:
         cadence = int(round(_scalar(table["exptime"][i])))
         rows.append({"sector": sector, "cadence_s": cadence, "_index": i})
     return sr, rows
+
+
+# FFI cutout side in pixels: room for a threshold aperture plus a sky ring for
+# background. Bigger wastes MAST bandwidth; smaller starves the background ring.
+DEFAULT_CUTOUT_PX = 11
+
+
+def cadence_seconds(time_array: Any) -> int:
+    """Cadence in seconds from a BTJD time array (median sample spacing).
+
+    FFI cadence varies by cycle (1800s / 600s / 200s), so it's measured from the
+    data rather than read off a fixed table like the 2-min SPOC path.
+    """
+    t = np.asarray(getattr(time_array, "value", time_array), dtype=float)
+    if t.size < 2:
+        return 0
+    return int(round(float(np.median(np.diff(t))) * 86400.0))
+
+
+def search_tesscut(tic: int, sectors: set[int] | None = None) -> tuple[Any, list[Row]]:
+    """Search TESS Full-Frame-Image cutouts (TESScut) for a TIC.
+
+    This is the Phase-2 wedge: TESScut serves a pixel stamp for ANY star, so it
+    reaches the millions with no pre-made SPOC/QLP light curve. Returns
+    (SearchResult, rows); cadence_s is 0 here and measured after download.
+    Network call — exercised by the CLI E2E, not unit tests.
+    """
+    import lightkurve as lk
+
+    sr = lk.search_tesscut(f"TIC {int(tic)}")
+    table = sr.table
+    rows: list[Row] = []
+    for i in range(len(sr)):
+        sector = _sector_from_mission(table["mission"][i])
+        if sector is None or (sectors is not None and sector not in sectors):
+            continue
+        rows.append({"sector": sector, "cadence_s": 0, "_index": i})
+    return sr, rows
+
+
+def extract_ffi_lightcurve(tpf: Any, threshold: float = 3.0) -> Any:
+    """Aperture photometry on an FFI cutout -> cleaned, normalized LightCurve.
+
+    Threshold aperture (pixels > threshold-MAD above median), minus a per-cadence
+    sky level taken as the median of the out-of-aperture pixels. Output matches
+    the SPOC path's contract (.time / .flux) so it drops straight into pipeline.
+
+    # ponytail: naive median-background aperture photometry — no PLD/CBV systematics
+    # correction. Swap in eleanor-grade detrending only if FFI precision falls short.
+    """
+    aperture = tpf.create_threshold_mask(threshold=threshold)
+    if not aperture.any():  # faint/edge star: fall back to the brightest pixel
+        aperture = tpf.create_threshold_mask(threshold=1.0)
+    lc = tpf.to_lightcurve(aperture_mask=aperture)
+    flux_cube = np.asarray(getattr(tpf.flux, "value", tpf.flux), dtype=float)
+    sky_per_pixel = np.nanmedian(flux_cube[:, ~aperture], axis=1)
+    lc = lc - sky_per_pixel * int(aperture.sum())
+    return lc.remove_nans().normalize()
+
+
+def download_ffi_lightcurve(
+    search_result: Any, index: int, cutout_px: int = DEFAULT_CUTOUT_PX
+) -> Any:
+    """Download one TESScut cutout and reduce it to a light curve."""
+    tpf = search_result[index].download(cutout_size=cutout_px)
+    return extract_ffi_lightcurve(tpf)
 
 
 def _preference(cadence_s: int) -> tuple[int, int]:
