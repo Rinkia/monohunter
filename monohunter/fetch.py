@@ -173,9 +173,12 @@ def extract_ffi_lightcurve(tpf: Any, threshold: float = 3.0) -> Any:
     if not aperture.any():  # faint/edge star: fall back to the brightest pixel
         aperture = tpf.create_threshold_mask(threshold=1.0)
     lc = tpf.to_lightcurve(aperture_mask=aperture)
+    # tpf.flux is an astropy Quantity (electron/s); carry its unit onto the sky
+    # term so the subtraction stays dimensionally consistent (fakes have unit 1).
+    unit = getattr(tpf.flux, "unit", 1)
     flux_cube = np.asarray(getattr(tpf.flux, "value", tpf.flux), dtype=float)
     sky_per_pixel = np.nanmedian(flux_cube[:, ~aperture], axis=1)
-    lc = lc - sky_per_pixel * int(aperture.sum())
+    lc = lc - sky_per_pixel * unit * int(aperture.sum())
     return lc.remove_nans().normalize()
 
 
