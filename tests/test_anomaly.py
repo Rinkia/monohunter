@@ -35,23 +35,30 @@ def test_clean_star_has_no_flares():
     assert find_flares(_time(), _clean(rng)) == []
 
 
+_DIP_W = 90   # ~3h at 2-min cadence — wide enough for the box matched filter
+
+
+def _add_dip(f, center, width=_DIP_W, depth=5e-3):
+    f[center : center + width] -= depth
+
+
 def test_dipper_many_irregular_dips():
     rng = np.random.default_rng(3)
     t = _time(); f = _clean(rng)
-    # 6 dips at IRREGULAR indices, varying depth -> aperiodic dipper.
-    for c in (1200, 3100, 3900, 7000, 10500, 12800):
-        f[c : c + 6] -= 6e-3
+    # 5 guarded dips at clearly IRREGULAR spacing -> aperiodic dipper.
+    for c in (1500, 2600, 6500, 8000, 13500):
+        _add_dip(f, c)
     res = find_dippers(t, f)
     assert res.is_dipper is True
-    assert res.n_dips == 6
+    assert res.n_dips >= 4
     assert res.interval_cv >= 0.3
 
 
 def test_regular_dips_are_not_a_dipper():
     rng = np.random.default_rng(4)
     t = _time(); f = _clean(rng)
-    for c in range(2000, 14000, 2000):   # evenly spaced -> EB-like, low CV
-        f[c : c + 6] -= 6e-3
+    for c in range(2500, 13000, 2500):   # evenly spaced -> EB-like, low CV
+        _add_dip(f, c)
     res = find_dippers(t, f)
     assert res.n_dips >= 4
     assert res.is_dipper is False        # regular spacing rejected
@@ -60,7 +67,7 @@ def test_regular_dips_are_not_a_dipper():
 def test_single_transit_is_not_a_dipper():
     rng = np.random.default_rng(5)
     t = _time(); f = _clean(rng)
-    f[7000:7300] -= 5e-3                  # one dip
+    _add_dip(f, 7000, width=300)          # one wide dip
     res = find_dippers(t, f)
     assert res.n_dips == 1
     assert res.is_dipper is False

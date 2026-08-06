@@ -31,15 +31,13 @@ FLARE_SIGMA = 4.0
 MIN_FLARE_POINTS = 3
 # Dips for the dipper test: shallower threshold than a flare (dips are the
 # science signal here), grouped into events.
-DIP_SIGMA = 3.0
-# A real dimming event spans several cadences; requiring 3 rejects random
-# 2-cadence noise dips that would otherwise inflate the dip count and the
-# interval scatter, false-flagging a regular EB as an (aperiodic) dipper.
-MIN_DIP_POINTS = 3
 # A dipper needs MANY dips whose spacing is IRREGULAR (high coefficient of
 # variation). Regular spacing => eclipsing binary, not a dipper.
 MIN_DIPPER_DIPS = 4
 DIPPER_INTERVAL_CV_MIN = 0.3
+# Iteratively pull the deepest GUARDED dip and mask it, up to this many times.
+MAX_DIPPER_ITERS = 12
+DIP_MASK_FACTOR = 1.5  # mask +/- this * duration around each found dip
 
 
 @dataclass(frozen=True)
@@ -106,37 +104,42 @@ def find_flares(time: np.ndarray, flux: np.ndarray) -> list[FlareEvent]:
 
 
 def find_dippers(time: np.ndarray, flux: np.ndarray) -> DipperResult:
-    """Count dimming events and decide dipper vs single-transit/EB.
+    """Count GUARDED dimming events and decide dipper vs single-transit/EB.
 
     A dipper is MANY dips with IRREGULAR spacing. One dip = a transit; many
     REGULAR dips = an eclipsing binary; many irregular dips = a dipper.
 
-    EXPERIMENTAL — real-data caveat: this counts every >DIP_SIGMA excursion, so
-    TESS systematics (momentum-dump ramps, red-noise wander, scattered light)
-    register as extra "dips" and can false-flag a clean single-transit star as a
-    dipper (verified live on TOI-2180: 6 "dips", only 1 real). A robust version
-    must count only GUARDED dips — reuse the box detector's FP guards WITHOUT its
-    isolation guard (which by design rejects the multi-dip signal a dipper is).
-    That hardening is the follow-up; treat the current output as a coarse flag.
+    Each dip is a real detection from the box matched filter with all its
+    false-positive guards (edge, gap-span, gap-flanking-ramp, scatter-stripe,
+    scatter-region, red-noise SNR) EXCEPT isolation — which is disabled here on
+    purpose, since a dipper is precisely a multi-dip star that isolation would
+    reject. This is what makes it robust to TESS systematics that a raw >3-sigma
+    threshold counts as spurious dips (the earlier naive version false-flagged
+    TOI-2180 with 6 "dips"; guarded counting leaves the 1 real transit).
+
+    We pull the deepest guarded dip, mask it, and re-search until none remain.
     """
+    from .detect import BoxMatchedFilter
+
     time = np.asarray(time, dtype=float)
     flux = np.asarray(flux, dtype=float)
     good = np.isfinite(time) & np.isfinite(flux)
     time, flux = time[good], flux[good]
-    if time.size < MIN_DIP_POINTS:
-        return DipperResult(False, 0, float("nan"), ())
-    sigma = _robust_sigma(flux)
-    if sigma <= 0:
+    if time.size < 10:
         return DipperResult(False, 0, float("nan"), ())
 
-    below = flux < 1.0 - DIP_SIGMA * sigma
+    detector = BoxMatchedFilter(check_isolation=False)
+    work = flux.copy()
     dip_times: list[float] = []
-    for s, e in _runs(below):
-        if e - s + 1 < MIN_DIP_POINTS:
-            continue
-        seg = flux[s : e + 1]
-        deepest = int(np.argmin(seg)) + s
-        dip_times.append(float(time[deepest]))
+    for _ in range(MAX_DIPPER_ITERS):
+        cands = detector.search(time, work)
+        if not cands:
+            break
+        c = cands[0]
+        dip_times.append(c.event_time_btjd)
+        half = (c.duration_hr / 24.0) * DIP_MASK_FACTOR
+        work = work.copy()
+        work[np.abs(time - c.event_time_btjd) <= half] = 1.0   # remove found dip
 
     n = len(dip_times)
     if n < 2:

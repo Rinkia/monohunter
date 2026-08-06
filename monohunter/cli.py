@@ -149,9 +149,8 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         for sector, flares, dip in results:
             print(f"S{sector}: {len(flares)} flare(s); "
-                  f"dipper[experimental]={dip.is_dipper} ({dip.n_dips} dips, "
-                  f"interval CV {dip.interval_cv:.2f}; raw threshold count, "
-                  f"systematics inflate it)")
+                  f"dipper={dip.is_dipper} ({dip.n_dips} guarded dips, "
+                  f"interval CV {dip.interval_cv:.2f})")
             for fl in flares:
                 print(f"    flare @ {fl.t_peak_btjd:.2f} BTJD  "
                       f"+{fl.amplitude_ppt:.1f}ppt  {fl.duration_hr:.1f}h  ({fl.n_points} pts)")

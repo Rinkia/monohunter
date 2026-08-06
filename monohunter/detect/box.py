@@ -73,10 +73,16 @@ class BoxMatchedFilter(Detector):
         durations_hr: tuple[float, ...] = DEFAULT_DURATIONS_HR,
         snr_threshold: float = DEFAULT_SNR_THRESHOLD,
         max_secondary_ratio: float = DEFAULT_MAX_SECONDARY_RATIO,
+        check_isolation: bool = True,
     ) -> None:
         self.durations_hr = durations_hr
         self.snr_threshold = snr_threshold
         self.max_secondary_ratio = max_secondary_ratio
+        # Isolation rejects a candidate when a 2nd equally-deep dip exists — right
+        # for single transits, but the dipper detector needs the OTHER guards
+        # without it (a dipper IS a multi-dip star). Off => keep edge/gap/scatter/
+        # red-noise guards, allow multiple dips.
+        self.check_isolation = check_isolation
 
     def search(self, time: np.ndarray, flux: np.ndarray) -> list[Candidate]:
         time = np.asarray(time, dtype=float)
@@ -183,16 +189,17 @@ class BoxMatchedFilter(Detector):
         # A variable / eclipsing-binary star keeps dipping, so its deepest trough
         # is not special — reject it. (TIC 17308640 was this: SNR 74 on a ~2%
         # variable star.)
-        smooth = uniform_filter1d(flux, size=best_width, mode="nearest")
-        guard_edge = int(round(EDGE_TRIM_D / dt)) + best_width // 2
-        smooth[:guard_edge] = np.inf
-        smooth[-guard_edge:] = np.inf
-        idx = np.arange(flux.size)
-        smooth[np.abs(idx - best_i) <= 2 * best_width] = np.inf  # mask the candidate
-        finite = np.isfinite(smooth)
-        if finite.sum() >= 20:
-            second_depth = 1.0 - float(np.min(smooth[finite]))
-            depth = best.depth_ppt / 1e3
-            if second_depth > self.max_secondary_ratio * depth:
-                return []
+        if self.check_isolation:
+            smooth = uniform_filter1d(flux, size=best_width, mode="nearest")
+            guard_edge = int(round(EDGE_TRIM_D / dt)) + best_width // 2
+            smooth[:guard_edge] = np.inf
+            smooth[-guard_edge:] = np.inf
+            idx = np.arange(flux.size)
+            smooth[np.abs(idx - best_i) <= 2 * best_width] = np.inf  # mask the candidate
+            finite = np.isfinite(smooth)
+            if finite.sum() >= 20:
+                second_depth = 1.0 - float(np.min(smooth[finite]))
+                depth = best.depth_ppt / 1e3
+                if second_depth > self.max_secondary_ratio * depth:
+                    return []
         return [best]
