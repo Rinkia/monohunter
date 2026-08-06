@@ -63,7 +63,19 @@ def main(argv: list[str] | None = None) -> int:
     wat = sub.add_parser(
         "watch", help="incrementally scan a fresh TESS sector (resumable; run on a schedule)"
     )
-    wat.add_argument("--sector", type=int, required=True, help="sector number to process")
+    wat.add_argument(
+        "--sector",
+        type=int,
+        default=None,
+        help="sector to process (omit to auto-detect the newest; see --hint)",
+    )
+    wat.add_argument(
+        "--hint",
+        type=int,
+        default=1,
+        help="starting sector for newest-sector probing when --sector is omitted "
+        "(set near the current sector to avoid a slow probe from 1)",
+    )
     wat.add_argument("--max", type=int, default=50, help="targets to scan this run")
     wat.add_argument("--out", default="watch_out", help="candidate output dir")
     wat.add_argument("--state", default="watch_state.json", help="resume state file")
@@ -126,10 +138,17 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "watch":
-        from .watch import watch
+        from .watch import latest_sector, watch
 
+        sector = args.sector
+        if sector is None:
+            sector = latest_sector(hint=args.hint)
+            if sector is None:
+                print(f"Could not detect a sector with data from hint {args.hint}.")
+                return 1
+            print(f"auto-detected newest sector: {sector}")
         res = watch(
-            args.sector,
+            sector,
             outdir=args.out,
             state_path=args.state,
             max_targets=args.max,

@@ -82,6 +82,27 @@ def test_cli_watch_wires(tmp_path, monkeypatch, capsys):
     assert "NOVEL" in out
 
 
+def test_cli_watch_auto_detects_newest_sector(tmp_path, monkeypatch, capsys):
+    from monohunter import cli
+
+    seen = {}
+    monkeypatch.setattr(W, "latest_sector", lambda hint=1: 42)
+    monkeypatch.setattr(W, "sector_targets", lambda s: [10])
+
+    def spy_run_target(tic, **k):
+        seen["sectors"] = k.get("sectors")
+        return []
+
+    monkeypatch.setattr(W, "run_target", spy_run_target)
+
+    rc = cli.main([
+        "watch", "--out", str(tmp_path / "o"), "--state", str(tmp_path / "st.json"),
+    ])  # no --sector
+    assert rc == 0
+    assert seen["sectors"] == [42]                       # auto-detected sector used
+    assert "auto-detected newest sector: 42" in capsys.readouterr().out
+
+
 def test_cli_watch_ffi_threads_source(tmp_path, monkeypatch):
     from monohunter import cli
 
