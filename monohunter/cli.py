@@ -54,6 +54,16 @@ def main(argv: list[str] | None = None) -> int:
         "no pre-made SPOC/QLP light curve); cadence is measured from the data",
     )
 
+    ano = sub.add_parser(
+        "anomaly", help="scan a target for flares (brightenings) and dipper behavior"
+    )
+    ano.add_argument("--tic", type=int, required=True, help="TESS Input Catalog id")
+    ano.add_argument("--window", type=float, default=3.0, help="detrend window in days")
+    ano.add_argument(
+        "--sectors", type=int, nargs="+", default=None,
+        help="restrict to these sector numbers (default: all available)",
+    )
+
     agg = sub.add_parser(
         "aggregate", help="build the community leaderboard from contributions/"
     )
@@ -128,6 +138,23 @@ def main(argv: list[str] | None = None) -> int:
                 )
             elif rec.period_constrained is False:
                 print("    period unconstrained (no reliable stellar density)")
+        return 0
+
+    if args.cmd == "anomaly":
+        from .anomaly import run_anomaly
+
+        results = run_anomaly(args.tic, sectors=args.sectors, window_length=args.window)
+        if not results:
+            print(f"No light curves for TIC {args.tic}.")
+            return 0
+        for sector, flares, dip in results:
+            print(f"S{sector}: {len(flares)} flare(s); "
+                  f"dipper[experimental]={dip.is_dipper} ({dip.n_dips} dips, "
+                  f"interval CV {dip.interval_cv:.2f}; raw threshold count, "
+                  f"systematics inflate it)")
+            for fl in flares:
+                print(f"    flare @ {fl.t_peak_btjd:.2f} BTJD  "
+                      f"+{fl.amplitude_ppt:.1f}ppt  {fl.duration_hr:.1f}h  ({fl.n_points} pts)")
         return 0
 
     if args.cmd == "aggregate":
