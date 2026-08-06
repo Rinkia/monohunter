@@ -88,6 +88,8 @@ def download_lightcurve(
     caller skips the sector instead of crashing — remove_nans() materializes the
     arrays and raises "buffer is too small" on a partial download.
     """
+    from lightkurve.utils import LightkurveError
+
     entry = search_result[index]
     try:
         try:
@@ -95,7 +97,10 @@ def download_lightcurve(
         except TypeError:
             lc = entry.download()
         return lc.remove_nans().normalize()
-    except (TypeError, OSError, ValueError):
+    except (LightkurveError, TypeError, OSError, ValueError):
+        # A corrupt/truncated FITS from an interrupted MAST download raises
+        # LightkurveError ("This file may be corrupt..."); remove_nans() on a
+        # partial array raises TypeError. Either way skip the sector, don't crash.
         return None
 
 
@@ -193,10 +198,12 @@ def download_ffi_lightcurve(
 ) -> Any:
     """Download one TESScut cutout and reduce it to a light curve. Returns None on
     a truncated/corrupt cutout (same MAST partial-download failure as SPOC)."""
+    from lightkurve.utils import LightkurveError
+
     try:
         tpf = search_result[index].download(cutout_size=cutout_px)
         return extract_ffi_lightcurve(tpf)
-    except (TypeError, OSError, ValueError):
+    except (LightkurveError, TypeError, OSError, ValueError):
         return None
 
 
