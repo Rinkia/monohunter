@@ -147,6 +147,7 @@ def run_target(
                 rho_err_cgs=rho_err_cgs,
                 time_array=time,
                 now_btjd=now_btjd,
+                snr=cand.snr,
             )
             rec = rec.model_copy(update={
                 "stellar_density_cgs": rho_cgs,

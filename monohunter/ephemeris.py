@@ -25,6 +25,11 @@ DAY = 86400.0          # s
 RHO_SUN_CGS = 1.408    # g/cm^3
 # Kipping (2013) Beta eccentricity prior for transiting planets.
 _ECC_A, _ECC_B = 0.867, 3.03
+# Below this SNR the trapezoid ingress is noise-dominated: its implied impact
+# parameter is meaningless, so fall back to a blind b prior (wider, honest
+# posterior) rather than a fake-precise one. Detection floor is 7; ingress shape
+# is a 2nd-order feature needing more S/N than the dip itself.
+SNR_INGRESS_MIN = 15.0
 
 
 @dataclass(frozen=True)
@@ -79,10 +84,16 @@ def estimate_period(
     rho_err_cgs: float | None,
     time_array,
     now_btjd: float | None = None,
+    snr: float | None = None,
     n: int = 20000,
     seed: int = 0,
 ) -> PeriodPosterior:
-    """Period posterior + next-transit window for a single transit. Pure."""
+    """Period posterior + next-transit window for a single transit. Pure.
+
+    snr: detection SNR. Below SNR_INGRESS_MIN the ingress is too noisy to trust,
+    so b falls back to blind regardless of the measured ingress. None = trust
+    ingress when present (back-compat).
+    """
     rng = np.random.default_rng(seed)
     t14_s = t14_hr * 3600.0
     k = float(np.sqrt(max(depth_ppt, 0.0) / 1e3))
@@ -95,9 +106,14 @@ def estimate_period(
     if rho_err / rho_star_cgs > 1.0:               # too uncertain to constrain P
         return PeriodPosterior(False, p_min)
 
-    # Impact parameter: constrain from ingress if measured, else blind.
+    # Impact parameter: constrain from ingress if measured AND the SNR is high
+    # enough for the ingress to mean anything; otherwise blind.
+    snr_ok = snr is None or snr >= SNR_INGRESS_MIN
     ingress_usable = (
-        ingress_hr is not None and np.isfinite(ingress_hr) and 0 < ingress_hr < t14_hr / 2
+        snr_ok
+        and ingress_hr is not None
+        and np.isfinite(ingress_hr)
+        and 0 < ingress_hr < t14_hr / 2
     )
     if ingress_usable:
         ie = ingress_err_hr if (ingress_err_hr and ingress_err_hr > 0) else 0.3 * ingress_hr

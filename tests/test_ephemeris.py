@@ -63,6 +63,21 @@ def test_toi2180_brackets_despite_tight_ingress_error():
     assert post.p05_d <= KNOWN_P <= post.p95_d
 
 
+def test_low_snr_ignores_ingress_and_widens_posterior():
+    # Same ingress; low SNR must fall back to blind b (ingress unreliable), giving
+    # b_from_ingress False and a wider posterior than the high-SNR case.
+    low = estimate_period(
+        ingress_hr=2.3, ingress_err_hr=0.4, time_array=S19_TIME, snr=8.0, **TOI2180
+    )
+    high = estimate_period(
+        ingress_hr=2.3, ingress_err_hr=0.4, time_array=S19_TIME, snr=50.0, **TOI2180
+    )
+    assert low.b_from_ingress is False           # gated: ingress not trusted
+    assert high.b_from_ingress is True           # trusted above SNR_INGRESS_MIN
+    assert (low.p95_d / low.p05_d) > (high.p95_d / high.p05_d)
+    assert low.period_constrained is True        # ρ* fine — still constrained, just blind b
+
+
 def test_missing_rho_is_unconstrained():
     post = estimate_period(
         t0_btjd=1830.77, t14_hr=24.0, ingress_hr=2.3, ingress_err_hr=0.4,
