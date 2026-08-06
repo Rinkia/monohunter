@@ -148,6 +148,7 @@ def run_target(
                 time_array=time,
                 now_btjd=now_btjd,
                 snr=cand.snr,
+                cadence_s=cadence_s,
             )
             rec = rec.model_copy(update={
                 "stellar_density_cgs": rho_cgs,

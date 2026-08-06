@@ -30,6 +30,13 @@ _ECC_A, _ECC_B = 0.867, 3.03
 # posterior) rather than a fake-precise one. Detection floor is 7; ingress shape
 # is a 2nd-order feature needing more S/N than the dip itself.
 SNR_INGRESS_MIN = 15.0
+# The ingress must be spanned by at least this many cadences for its slope (hence
+# the implied b) to mean anything. Coarse cadence smears the ingress LONGER than
+# it is, biasing b -> period high — flooring the ingress *error* can't fix a biased
+# *value* (verified: FFI TOI-2180 needed a ~4h error just to touch the truth), so
+# below this we drop to blind b, which brackets. FFI 30-min ≈ 6 cadences -> blind;
+# SPOC 2-min ≈ 69 -> trusted.
+MIN_INGRESS_CADENCES = 10.0
 
 
 @dataclass(frozen=True)
@@ -85,6 +92,7 @@ def estimate_period(
     time_array,
     now_btjd: float | None = None,
     snr: float | None = None,
+    cadence_s: float | None = None,
     n: int = 20000,
     seed: int = 0,
 ) -> PeriodPosterior:
@@ -93,6 +101,9 @@ def estimate_period(
     snr: detection SNR. Below SNR_INGRESS_MIN the ingress is too noisy to trust,
     so b falls back to blind regardless of the measured ingress. None = trust
     ingress when present (back-compat).
+    cadence_s: sampling cadence. When the ingress is spanned by fewer than
+    MIN_INGRESS_CADENCES, it is too coarsely sampled to trust -> blind b. None =
+    ignore cadence (back-compat).
     """
     rng = np.random.default_rng(seed)
     t14_s = t14_hr * 3600.0
@@ -106,11 +117,17 @@ def estimate_period(
     if rho_err / rho_star_cgs > 1.0:               # too uncertain to constrain P
         return PeriodPosterior(False, p_min)
 
-    # Impact parameter: constrain from ingress if measured AND the SNR is high
-    # enough for the ingress to mean anything; otherwise blind.
+    # Impact parameter: constrain from ingress only if it's measured, the SNR is
+    # high enough, AND the cadence samples the ingress finely enough; else blind.
     snr_ok = snr is None or snr >= SNR_INGRESS_MIN
+    cadence_ok = (
+        cadence_s is None
+        or ingress_hr is None
+        or ingress_hr / (cadence_s / 3600.0) >= MIN_INGRESS_CADENCES
+    )
     ingress_usable = (
         snr_ok
+        and cadence_ok
         and ingress_hr is not None
         and np.isfinite(ingress_hr)
         and 0 < ingress_hr < t14_hr / 2

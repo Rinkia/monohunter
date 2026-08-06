@@ -78,6 +78,23 @@ def test_low_snr_ignores_ingress_and_widens_posterior():
     assert low.period_constrained is True        # ρ* fine — still constrained, just blind b
 
 
+def test_coarse_cadence_ignores_ingress_and_brackets():
+    # FFI 30-min cadence spans the ~2.9h ingress by only ~6 cadences (< 10): the
+    # ingress is smeared, so trusting it biases P high and excludes 261 (the real
+    # FFI bug). Dropping to blind b must re-bracket the truth.
+    coarse = estimate_period(
+        ingress_hr=2.886, ingress_err_hr=None, time_array=S19_TIME,
+        snr=53.0, cadence_s=1800.0, **TOI2180
+    )
+    fine = estimate_period(
+        ingress_hr=2.886, ingress_err_hr=None, time_array=S19_TIME,
+        snr=53.0, cadence_s=120.0, **TOI2180   # 2-min: ~87 cadences, trusted
+    )
+    assert coarse.b_from_ingress is False           # gated out by cadence
+    assert fine.b_from_ingress is True              # finely sampled -> trusted
+    assert coarse.p05_d <= KNOWN_P <= coarse.p95_d  # blind b re-brackets the truth
+
+
 def test_missing_rho_is_unconstrained():
     post = estimate_period(
         t0_btjd=1830.77, t14_hr=24.0, ingress_hr=2.3, ingress_err_hr=0.4,
