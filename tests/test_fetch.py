@@ -58,6 +58,34 @@ def test_download_falls_back_when_bitmask_unsupported():
     assert result is not None
 
 
+class _FakeTruncatedLC:
+    """remove_nans() raises like astropy on a truncated FITS ('buffer too small')."""
+
+    def remove_nans(self):
+        raise TypeError("buffer is too small for requested array")
+
+
+class _FakeTruncatedEntry:
+    def download(self, quality_bitmask=None):
+        return _FakeTruncatedLC()
+
+
+def test_download_returns_none_on_truncated_fits():
+    # A partial MAST download must be a graceful skip, not an uncaught TypeError.
+    assert download_lightcurve(_FakeSR(_FakeTruncatedEntry()), 0) is None
+
+
+def test_iter_skips_none_downloads():
+    rows = [{"sector": 25, "cadence_s": 120}, {"sector": 26, "cadence_s": 120}]
+
+    def download(row):
+        return None if row["sector"] == 25 else f"lc-{row['sector']}"
+
+    out = list(iter_lightcurves(rows, download))
+    assert [r[0]["sector"] for r in out] == [26]   # truncated S25 skipped
+    assert out[0][1] == "lc-26"
+
+
 def test_prefers_2min_and_dedups_by_sector():
     rows = [
         {"sector": 25, "cadence_s": 20},

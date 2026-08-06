@@ -83,14 +83,20 @@ def download_lightcurve(
     """Download one row, quality-masked, NaN-stripped, normalized.
 
     Centralizes data cleaning in the fetch layer. Falls back to a plain download
-    if a product doesn't accept quality_bitmask (e.g. some FFI products).
+    if a product doesn't accept quality_bitmask (e.g. some FFI products). Returns
+    None on a truncated/corrupt FITS (MAST serves partial files under load) so the
+    caller skips the sector instead of crashing — remove_nans() materializes the
+    arrays and raises "buffer is too small" on a partial download.
     """
     entry = search_result[index]
     try:
-        lc = entry.download(quality_bitmask=quality_bitmask)
-    except TypeError:
-        lc = entry.download()
-    return lc.remove_nans().normalize()
+        try:
+            lc = entry.download(quality_bitmask=quality_bitmask)
+        except TypeError:
+            lc = entry.download()
+        return lc.remove_nans().normalize()
+    except (TypeError, OSError, ValueError):
+        return None
 
 
 def _scalar(value: object) -> float:
@@ -185,9 +191,13 @@ def extract_ffi_lightcurve(tpf: Any, threshold: float = 3.0) -> Any:
 def download_ffi_lightcurve(
     search_result: Any, index: int, cutout_px: int = DEFAULT_CUTOUT_PX
 ) -> Any:
-    """Download one TESScut cutout and reduce it to a light curve."""
-    tpf = search_result[index].download(cutout_size=cutout_px)
-    return extract_ffi_lightcurve(tpf)
+    """Download one TESScut cutout and reduce it to a light curve. Returns None on
+    a truncated/corrupt cutout (same MAST partial-download failure as SPOC)."""
+    try:
+        tpf = search_result[index].download(cutout_size=cutout_px)
+        return extract_ffi_lightcurve(tpf)
+    except (TypeError, OSError, ValueError):
+        return None
 
 
 def _preference(cadence_s: int) -> tuple[int, int]:
@@ -216,4 +226,7 @@ def iter_lightcurves(
     light curve is released before the next download — bounded memory.
     """
     for row in resolve_sectors(rows):
-        yield row, download(row)
+        lc = download(row)
+        if lc is None:          # truncated/failed download -> skip this sector
+            continue
+        yield row, lc
