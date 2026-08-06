@@ -21,14 +21,40 @@ from scipy.optimize import curve_fit
 
 
 # A transiting planet's depth tops out near ~3% (a giant on a small star);
-# anything deeper is almost certainly a star eclipsing a star. ponytail: depth
-# alone; V-shape (ingress≈duration) and a secondary eclipse would refine it.
+# anything deeper is almost certainly a star eclipsing a star.
 EB_DEPTH_THRESHOLD_PPT = 30.0
+# V-shape: a dip whose ingress fills most of the half-duration has no flat bottom
+# — the hallmark of a grazing eclipse (typically stellar). Paired with a modest
+# depth floor so shallow noisy fits aren't mislabelled.
+EB_VSHAPE_INGRESS_FRAC = 0.8
+EB_VSHAPE_MIN_DEPTH_PPT = 10.0
+# NOTE: no secondary-eclipse test. For a genuine long-period mono-transit the
+# secondary sits ~P/2 after the primary, i.e. outside the single observed sector
+# (P > sector by definition), so it can never appear in the data. Short-period
+# EBs whose secondary would show are already rejected by the isolation guard.
 
 
-def is_likely_eb(depth_ppt: float) -> bool:
-    """Depth too deep for a planet → likely an eclipsing binary. Labels, not rejects."""
-    return depth_ppt > EB_DEPTH_THRESHOLD_PPT
+def is_likely_eb(
+    depth_ppt: float,
+    ingress_hr: float | None = None,
+    duration_hr: float | None = None,
+) -> bool:
+    """Likely an eclipsing binary → label (never reject).
+
+    Two signals: (1) depth too deep for any planet; (2) a V-shaped (grazing) dip
+    with non-trivial depth. ingress/duration are optional (None → depth-only).
+    """
+    if depth_ppt > EB_DEPTH_THRESHOLD_PPT:
+        return True
+    if ingress_hr is not None and duration_hr and duration_hr > 0:
+        half = duration_hr / 2.0
+        if (
+            half > 0
+            and ingress_hr / half >= EB_VSHAPE_INGRESS_FRAC
+            and depth_ppt > EB_VSHAPE_MIN_DEPTH_PPT
+        ):
+            return True
+    return False
 
 
 @dataclass(frozen=True)

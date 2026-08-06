@@ -17,6 +17,17 @@ def test_is_likely_eb_depth_threshold():
     assert is_likely_eb(EB_DEPTH_THRESHOLD_PPT - 1) is False
 
 
+def test_is_likely_eb_vshape():
+    # V-shaped: ingress ~= half-duration, moderate depth -> grazing EB.
+    assert is_likely_eb(15.0, ingress_hr=5.0, duration_hr=10.0) is True   # ingress/half=1.0
+    # Flat-bottomed (small ingress) at the same depth -> planet-like, not EB.
+    assert is_likely_eb(15.0, ingress_hr=0.5, duration_hr=10.0) is False
+    # Shallow V -> below the depth floor, not flagged (avoid noisy false labels).
+    assert is_likely_eb(5.0, ingress_hr=5.0, duration_hr=10.0) is False
+    # Missing shape info -> depth-only (back-compat).
+    assert is_likely_eb(4.1, ingress_hr=None, duration_hr=None) is False
+
+
 def _time_axis(n=3000):
     dt = 2.0 / (60 * 24)  # 2-min cadence, days
     return np.arange(n) * dt

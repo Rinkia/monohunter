@@ -134,7 +134,7 @@ def run_target(
                 tool_version=__version__,
                 known_toi_match=is_known,
                 known_toi_id=toi_id,
-                likely_eb=is_likely_eb(depth_ppt),
+                likely_eb=is_likely_eb(depth_ppt, ingress_hr, duration_hr),
             )
             # Ephemeris: constrain the period + predict the next transit.
             post = estimate_period(
