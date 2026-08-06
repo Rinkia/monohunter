@@ -67,6 +67,12 @@ def main(argv: list[str] | None = None) -> int:
     wat.add_argument("--max", type=int, default=50, help="targets to scan this run")
     wat.add_argument("--out", default="watch_out", help="candidate output dir")
     wat.add_argument("--state", default="watch_state.json", help="resume state file")
+    wat.add_argument(
+        "--ffi",
+        action="store_true",
+        help="extract from Full-Frame Images via TESScut (note: the default pool "
+        "is SPOC targets, which already have light curves)",
+    )
 
     args = parser.parse_args(argv)
 
@@ -122,7 +128,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "watch":
         from .watch import watch
 
-        res = watch(args.sector, outdir=args.out, state_path=args.state, max_targets=args.max)
+        res = watch(
+            args.sector,
+            outdir=args.out,
+            state_path=args.state,
+            max_targets=args.max,
+            source="ffi" if args.ffi else "spoc",
+        )
         print(
             f"sector {res.sector}: scanned {res.scanned}, "
             f"{len(res.novel)} novel, {res.remaining} remaining"

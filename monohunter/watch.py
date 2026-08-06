@@ -100,14 +100,24 @@ def watch(
     max_targets: int = 50,
     target_pool: list[int] | None = None,
     runner: Callable[[int], list[FindRecord]] | None = None,
+    source: str = "spoc",
 ) -> WatchResult:
     """Process the next `max_targets` un-scanned TICs of `sector`. Resumable.
 
     Writes each not-known-TOI candidate's record to outdir; updates state after
     every target so a crash never re-scans or loses work.
+
+    source: "spoc" (pre-made light curves) or "ffi" (extract from Full-Frame
+    Images). NOTE the default pool (`sector_targets`) enumerates 2-min SPOC TICs;
+    FFI mode is most useful with an injected `target_pool` of stars that LACK
+    SPOC data (there's no cheap MAST query for the full FFI star pool — deferred).
     """
     os.makedirs(outdir, exist_ok=True)
-    run = runner or (lambda tic: run_target(tic, sectors=[sector], make_plots=False, outdir=outdir))
+    run = runner or (
+        lambda tic: run_target(
+            tic, sectors=[sector], make_plots=False, outdir=outdir, source=source
+        )
+    )
     tics = target_pool if target_pool is not None else sector_targets(sector)
 
     state = load_state(state_path)

@@ -80,3 +80,22 @@ def test_cli_watch_wires(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "sector 14" in out
     assert "NOVEL" in out
+
+
+def test_cli_watch_ffi_threads_source(tmp_path, monkeypatch):
+    from monohunter import cli
+
+    seen = {}
+
+    def spy_run_target(tic, **k):
+        seen["source"] = k.get("source")
+        return []
+
+    monkeypatch.setattr(W, "sector_targets", lambda s: [10])
+    monkeypatch.setattr(W, "run_target", spy_run_target)
+
+    cli.main([
+        "watch", "--sector", "14", "--ffi",
+        "--out", str(tmp_path / "o"), "--state", str(tmp_path / "st.json"),
+    ])
+    assert seen["source"] == "ffi"
