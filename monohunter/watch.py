@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -101,6 +102,7 @@ def watch(
     target_pool: list[int] | None = None,
     runner: Callable[[int], list[FindRecord]] | None = None,
     source: str = "spoc",
+    workers: int = 1,
 ) -> WatchResult:
     """Process the next `max_targets` un-scanned TICs of `sector`. Resumable.
 
@@ -111,6 +113,11 @@ def watch(
     Images). NOTE the default pool (`sector_targets`) enumerates 2-min SPOC TICs;
     FFI mode is most useful with an injected `target_pool` of stars that LACK
     SPOC data (there's no cheap MAST query for the full FFI star pool — deferred).
+
+    workers: parallel MAST downloads. The per-target work is network-bound, so a
+    thread pool cuts wall-clock ~linearly up to MAST's rate limit (keep it modest,
+    4-8). State writes stay single-threaded (results are consumed on the main
+    thread as each future lands), so resumability is preserved without a lock.
     """
     os.makedirs(outdir, exist_ok=True)
     run = runner or (
@@ -124,11 +131,9 @@ def watch(
     todo = pending_targets(state, sector, tics, max_targets)
 
     novel: list[FindRecord] = []
-    for tic in todo:
-        try:
-            recs = run(tic)
-        except Exception:
-            recs = []
+
+    def consume(tic: int, recs: list[FindRecord]) -> None:
+        # Main-thread only: mutate state and write files here so nothing races.
         for rec in recs:
             if not rec.known_toi_match:
                 novel.append(rec)
@@ -136,6 +141,21 @@ def watch(
                 path.write_text(rec.to_json(indent=2), encoding="utf-8")
         mark_processed(state, sector, [tic])
         save_state(state_path, state)   # incremental — resumable on crash
+
+    def safe_run(tic: int) -> list[FindRecord]:
+        try:
+            return run(tic)
+        except Exception:
+            return []
+
+    if workers <= 1:
+        for tic in todo:
+            consume(tic, safe_run(tic))
+    else:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {pool.submit(safe_run, tic): tic for tic in todo}
+            for fut in as_completed(futures):
+                consume(futures[fut], fut.result())
 
     # state now includes what we just processed; whatever's still pending is remaining.
     remaining = len(pending_targets(state, sector, tics, None))

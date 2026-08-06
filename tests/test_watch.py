@@ -52,6 +52,33 @@ def test_watch_collects_novel_and_resumes(tmp_path):
     assert r2.remaining == 0
 
 
+def test_workers_parallel_matches_serial_and_saves_all(tmp_path):
+    import threading
+    import time
+
+    pool = list(range(10, 100, 10))  # 9 targets
+
+    threads_used = set()
+
+    def runner(tic):
+        threads_used.add(threading.get_ident())
+        time.sleep(0.02)                       # force overlap so >1 thread runs
+        return [_rec(tic, known=(tic == 50))]  # 50 is a known TOI
+
+    sp, out = str(tmp_path / "s.json"), str(tmp_path / "o")
+    res = W.watch(
+        14, outdir=out, state_path=sp, max_targets=99,
+        target_pool=pool, runner=runner, workers=4,
+    )
+
+    assert res.scanned == len(pool)
+    assert {n.tic for n in res.novel} == set(pool) - {50}   # same set as serial
+    assert len(threads_used) > 1                            # actually parallel
+    # every target committed to state -> nothing re-scanned on resume
+    assert set(W.load_state(sp)["processed"]["14"]) == set(pool)
+    assert res.remaining == 0
+
+
 def test_runner_error_is_skipped_not_fatal(tmp_path):
     def runner(tic):
         if tic == 10:

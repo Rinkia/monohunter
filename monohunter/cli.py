@@ -85,6 +85,12 @@ def main(argv: list[str] | None = None) -> int:
         help="extract from Full-Frame Images via TESScut (note: the default pool "
         "is SPOC targets, which already have light curves)",
     )
+    wat.add_argument(
+        "--workers",
+        type=int,
+        default=4,
+        help="parallel MAST downloads (network-bound; keep modest, 4-8)",
+    )
 
     args = parser.parse_args(argv)
 
@@ -153,6 +159,7 @@ def main(argv: list[str] | None = None) -> int:
             state_path=args.state,
             max_targets=args.max,
             source="ffi" if args.ffi else "spoc",
+            workers=args.workers,
         )
         print(
             f"sector {res.sector}: scanned {res.scanned}, "
