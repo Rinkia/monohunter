@@ -128,6 +128,26 @@ def test_p_min_baseline():
     assert abs(_p_min_baseline(1.0, t) - 26.0) < 0.1
 
 
+def test_p_min_gap_aware_lowers_bound():
+    # Heavily-gapped baseline: segments [0,10], [20,22], [32,42]. Transit sits in
+    # the short middle segment (t0=21). A period ~1-11d places BOTH siblings in the
+    # flanking gaps, so p_min drops from the conservative far-edge (21) to ~1 (the
+    # distance from t0 to its own segment edge, where the sibling enters the gap).
+    t = np.concatenate([
+        np.linspace(0.0, 10.0, 200),
+        np.linspace(20.0, 22.0, 60),
+        np.linspace(32.0, 42.0, 200),
+    ])
+    conservative = max(42.0 - 21.0, 21.0 - 0.0)          # = 21 (old behavior)
+    p_min = _p_min_baseline(21.0, t)
+    assert p_min < conservative
+    assert abs(p_min - 1.0) < 0.1
+
+    # No-gap sanity: a contiguous baseline still returns the far edge.
+    contig = np.linspace(0.0, 27.0, 1000)
+    assert abs(_p_min_baseline(13.5, contig) - 13.5) < 0.1
+
+
 def test_next_window_from_known_period():
     # now just after t0 -> next transit ~ t0 + P (median), inside baseline-consistent range.
     post = estimate_period(

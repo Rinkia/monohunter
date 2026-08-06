@@ -67,18 +67,54 @@ def _b_from_ingress(ingress_hr, t14_hr: float, k: float):
     return np.sqrt(b2)
 
 
-def _p_min_baseline(t0_btjd: float, time_array) -> float:
-    """Conservative lower bound: a 2nd transit was not seen in the baseline, so
-    P must exceed the distance from t0 to each baseline edge.
+P_MIN_GAP_THRESHOLD_D = 0.2  # a diff larger than this splits the baseline into segments
 
-    ponytail: baseline-only; a gap-aware version (siblings can hide in data gaps,
-    lowering p_min) is a later refinement.
+
+def _segments(t: np.ndarray, gap_threshold_d: float) -> list[tuple[float, float]]:
+    """Contiguous observed (start, end) intervals, split at gaps > threshold."""
+    edges = np.nonzero(np.diff(t) > gap_threshold_d)[0]
+    starts = np.concatenate(([0], edges + 1))
+    ends = np.concatenate((edges, [t.size - 1]))
+    return [(float(t[s]), float(t[e])) for s, e in zip(starts, ends)]
+
+
+def _p_min_baseline(
+    t0_btjd: float, time_array, gap_threshold_d: float = P_MIN_GAP_THRESHOLD_D
+) -> float:
+    """Hard lower bound on P from non-detection of a 2nd transit.
+
+    A period P is refuted if a sibling at t0±P lands in *covered* time (inside an
+    observed segment). p_min is the smallest P that is NOT refuted — i.e. the
+    nearest P at which both siblings escape into a gap or off the baseline. With
+    no gaps this is just the far baseline edge; a mid-sector gap lets a sibling
+    hide, lowering p_min to the distance from t0 to the near gap edge.
     """
     t = np.asarray(time_array, dtype=float)
     t = t[np.isfinite(t)]
     if t.size < 2:
         return 0.0
-    return float(max(t.max() - t0_btjd, t0_btjd - t.min()))
+    t.sort()
+    max_edge = float(max(t.max() - t0_btjd, t0_btjd - t.min()))
+
+    # Refuted P-ranges: sibling t0+P inside a segment [s,e] -> P in [s-t0, e-t0];
+    # sibling t0-P inside [s,e] -> P in [t0-e, t0-s]. Keep only positive P.
+    refuted: list[tuple[float, float]] = []
+    for s, e in _segments(t, gap_threshold_d):
+        if e > t0_btjd:
+            refuted.append((max(s - t0_btjd, 0.0), e - t0_btjd))
+        if s < t0_btjd:
+            refuted.append((max(t0_btjd - e, 0.0), t0_btjd - s))
+
+    # p_min = end of the refuted interval that covers P=0 (t0 sits in a segment,
+    # so both siblings start covered). The first gap in that run is the bound.
+    refuted.sort()
+    p_min = 0.0
+    for lo, hi in refuted:
+        if lo <= p_min + 1e-9:
+            p_min = max(p_min, hi)
+        else:
+            break  # a non-refuted window opened -> that's the lower bound
+    return min(p_min, max_edge)
 
 
 def estimate_period(
