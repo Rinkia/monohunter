@@ -88,6 +88,12 @@ def main(argv: list[str] | None = None) -> int:
         help="photometric band (default r for ztf, g for asassn; ZTF g/r/i, ASAS-SN g/V)",
     )
 
+    vet = sub.add_parser(
+        "vet", help="build a static crowd-vetting page (candidate PNGs + label buttons)"
+    )
+    vet.add_argument("--candidates", default="candidates", help="dir of record JSONs + PNGs")
+    vet.add_argument("--out", default="_vet", help="output dir for index.html + PNGs")
+
     agg = sub.add_parser(
         "aggregate", help="build the community leaderboard from contributions/"
     )
@@ -230,6 +236,13 @@ def main(argv: list[str] | None = None) -> int:
             for fl in flares:
                 print(f"    flare @ {fl.t_peak_btjd:.2f} BTJD  "
                       f"+{fl.amplitude_ppt:.1f}ppt  {fl.duration_hr:.1f}h  ({fl.n_points} pts)")
+        return 0
+
+    if args.cmd == "vet":
+        from .vetting import build_vetting_site
+
+        n = build_vetting_site(args.candidates, args.out)
+        print(f"{n} candidate(s) -> {Path(args.out) / 'index.html'}")
         return 0
 
     if args.cmd == "aggregate":
