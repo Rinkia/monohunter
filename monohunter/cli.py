@@ -129,6 +129,11 @@ def main(argv: list[str] | None = None) -> int:
                 f"S{rec.sector}: depth={rec.depth_ppt:.2f}ppt "
                 f"dur={rec.duration_hr:.0f}h SNR={rec.snr:.1f}{flag}{eb}{rec_flag} -> {path}"
             )
+            if rec.measured_period_d:
+                print(
+                    f"    EXACT P = {rec.measured_period_d:.3f}d "
+                    f"(fitted from {rec.n_transits_used} transit times)"
+                )
             if rec.period_constrained and rec.p_best_d:
                 nxt = ""
                 if rec.next_window_btjd:

@@ -7,7 +7,46 @@ from monohunter.ephemeris import (
     _b_from_ingress,
     _p_min_baseline,
     estimate_period,
+    period_from_transits,
 )
+
+
+def test_period_from_3plus_transits_is_exact():
+    # Epochs 0, 1, 3 (a unit gap present, coprime differences) uniquely pin the
+    # period — no guess needed. Sparse epochs sharing a common factor would leave
+    # a multiple-of-P alias, which is an honest data limit, not a bug.
+    P, t0 = 84.3, 1500.0
+    times = [t0 + n * P for n in (0, 1, 3)]
+    res = period_from_transits(times)
+    assert res is not None
+    period, fit_t0, n = res
+    assert n == 3
+    assert abs(period - P) < 1e-3
+
+
+def test_period_from_transits_tolerates_small_timing_noise():
+    P, t0 = 84.3, 1500.0
+    times = [t0, t0 + P + 0.05, t0 + 3 * P - 0.05, t0 + 4 * P + 0.03]
+    res = period_from_transits(times)
+    assert res is not None
+    period, _, n = res
+    assert n == 4
+    assert abs(period - P) < 0.05
+
+
+def test_two_transits_need_a_guess():
+    P, t0 = 84.3, 1500.0
+    two = [t0, t0 + 12 * P]         # span = 12P; ambiguous without a guess
+    assert period_from_transits(two) is None
+    res = period_from_transits(two, p_guess=85.0)   # guess -> pick 12 cycles
+    assert res is not None
+    period, _, n = res
+    assert n == 2 and abs(period - P) < 1e-6
+
+
+def test_fewer_than_two_transits_returns_none():
+    assert period_from_transits([1500.0]) is None
+    assert period_from_transits([]) is None
 
 # TOI-2180 b: the by-hand-check target. Real TIC ρ*=0.238 solar → cgs.
 TOI2180 = dict(

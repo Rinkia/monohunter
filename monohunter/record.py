@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-SCHEMA_VERSION = 5  # v5 adds multi-sector context (n_sectors_observed, recurring_dip)
+SCHEMA_VERSION = 6  # v6 adds measured_period_d (exact period from multi-sector transit times)
 
 
 class FindRecord(BaseModel):
@@ -51,6 +51,12 @@ class FindRecord(BaseModel):
     recurring_dip: bool | None = None        # dips in >1 sector -> periodic/variable,
     # not a clean single transit; the period is constrained by the FULL multi-sector
     # baseline (a 2nd transit ruled out across all observed sectors raises p_min)
+
+    # v6: exact period fitted from the MULTIPLE transit times of a recurring target
+    # (integer-epoch linear ephemeris). Far tighter than the single-transit range;
+    # None unless >=2 transits were seen.
+    measured_period_d: float | None = None
+    n_transits_used: int | None = None
 
     def to_json(self, **kwargs: object) -> str:
         return self.model_dump_json(**kwargs)  # type: ignore[arg-type]

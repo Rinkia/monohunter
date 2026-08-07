@@ -20,7 +20,7 @@ from .characterize import fit_trapezoid, is_likely_eb
 from .crossmatch import known_toi
 from .detect import BoxMatchedFilter, Detector
 from .detrend import DEFAULT_METHOD, DEFAULT_WINDOW_D, flatten
-from .ephemeris import estimate_period
+from .ephemeris import estimate_period, period_from_transits
 from .fetch import (
     cadence_seconds,
     download_ffi_lightcurve,
@@ -179,4 +179,17 @@ def run_target(
         if make_plots:
             rec = rec.model_copy(update={"plot_path": _save_plot(outdir, rec, p["time"], p["flat"])})
         records.append(rec)
+
+    # Exact period from the multiple transit times (a recurring target's real win):
+    # >=3 transits pin the period uniquely; 2 use the rho*-based estimate to pick the
+    # cycle count. Stamp it on every record of the target.
+    if len(records) >= 2:
+        guess = next((r.p_best_d for r in records if r.p_best_d), None)
+        fit = period_from_transits([r.event_time_btjd for r in records], p_guess=guess)
+        if fit is not None:
+            period_d, _t0, n_tr = fit
+            records = [
+                r.model_copy(update={"measured_period_d": period_d, "n_transits_used": n_tr})
+                for r in records
+            ]
     return records

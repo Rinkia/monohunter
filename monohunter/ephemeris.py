@@ -117,6 +117,58 @@ def _p_min_baseline(
     return min(p_min, max_edge)
 
 
+def period_from_transits(transit_times, p_guess: float | None = None, resid_frac: float = 0.01):
+    """Exact period from MULTIPLE transit times of the same event across epochs.
+
+    Once a star transits in several sectors we have several observed transit
+    times; the true period is the one that puts every transit on an integer cycle
+    (t_i = t0 + n_i * P). This is vastly tighter than the single-transit estimate.
+
+    - >=3 transits: uniquely recoverable. Scan the cycle count between first and
+      last transit (largest period first); return the first period that gives
+      every transit a distinct integer epoch with a small residual — the
+      fundamental (aliases at P/k fit too but appear at higher cycle counts).
+    - exactly 2 transits: genuinely ambiguous (P = span / N for any N); use
+      p_guess (the rho*-based single-transit estimate) to pick the cycle count.
+
+    Returns (period_d, t0_btjd, n_transits) or None.
+    """
+    ts = np.array(sorted({round(float(t), 6) for t in transit_times if np.isfinite(t)}))
+    m = ts.size
+    if m < 2:
+        return None
+    span = float(ts[-1] - ts[0])
+    if span <= 0:
+        return None
+
+    def _fit(cycles: int):
+        P = span / cycles
+        ep = np.round((ts - ts[0]) / P).astype(int)
+        if np.unique(ep).size < m:      # two transits collapsed onto one epoch
+            return None
+        design = np.vstack([np.ones(m), ep]).T
+        (t0f, Pf), *_ = np.linalg.lstsq(design, ts, rcond=None)
+        resid = float(np.sqrt(np.mean((ts - (t0f + ep * Pf)) ** 2)))
+        return float(Pf), float(t0f), resid
+
+    if m >= 3:
+        max_cycles = min(int(span / 0.5), 50000)    # ignore periods below 0.5 d
+        for cycles in range(1, max_cycles + 1):
+            fit = _fit(cycles)
+            if fit is None:
+                continue
+            P, t0, resid = fit
+            if resid <= resid_frac * P:
+                return P, t0, m
+        return None
+
+    # m == 2: pick the cycle count from the single-transit guess, else ambiguous.
+    if p_guess and p_guess > 0:
+        cycles = max(1, round(span / p_guess))
+        return span / cycles, float(ts[0]), 2
+    return None
+
+
 def estimate_period(
     t0_btjd: float,
     t14_hr: float,
