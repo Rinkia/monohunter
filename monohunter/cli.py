@@ -64,6 +64,16 @@ def main(argv: list[str] | None = None) -> int:
         help="restrict to these sector numbers (default: all available)",
     )
 
+    fb = sub.add_parser(
+        "ffi-batch",
+        help="extract EVERY catalog star in one FFI cutout and scan each (reaches "
+        "non-SPOC stars; one download amortized over many targets)",
+    )
+    fb.add_argument("--tic", type=int, required=True, help="TIC at the cutout center")
+    fb.add_argument("--sector", type=int, required=True, help="sector to cut")
+    fb.add_argument("--cutout", type=int, default=30, help="cutout side in pixels")
+    fb.add_argument("--tmag-max", type=float, default=14.0, help="skip stars fainter than this")
+
     agg = sub.add_parser(
         "aggregate", help="build the community leaderboard from contributions/"
     )
@@ -144,6 +154,24 @@ def main(argv: list[str] | None = None) -> int:
                 )
             elif rec.period_constrained is False:
                 print("    period unconstrained (no reliable stellar density)")
+        return 0
+
+    if args.cmd == "ffi-batch":
+        from .ffi_batch import run_ffi_batch
+
+        dets, n_blended = run_ffi_batch(
+            args.tic, args.sector, cutout_px=args.cutout, tmag_max=args.tmag_max
+        )
+        blend_note = f" ({n_blended} crowding blends collapsed)" if n_blended else ""
+        print(
+            f"FFI batch S{args.sector} around TIC {args.tic} "
+            f"({args.cutout}x{args.cutout}px): {len(dets)} detection(s){blend_note}"
+        )
+        for d in sorted(dets, key=lambda x: -x.snr):
+            print(
+                f"  TIC {d.tic}: depth={d.depth_ppt:.2f}ppt dur={d.duration_hr:.0f}h "
+                f"SNR={d.snr:.1f} @ {d.event_time_btjd:.2f} BTJD"
+            )
         return 0
 
     if args.cmd == "anomaly":
