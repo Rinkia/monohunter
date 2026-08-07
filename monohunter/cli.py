@@ -76,6 +76,15 @@ def main(argv: list[str] | None = None) -> int:
     fb.add_argument("--outdir", default="ffi_candidates", help="where to write JSON + PNG")
     fb.add_argument("--no-plot", action="store_true", help="skip PNG generation")
 
+    gr = sub.add_parser(
+        "ground",
+        help="cross-check a candidate against ground-survey photometry (ZTF): is "
+        "the host quiet over years, or a variable star / EB?",
+    )
+    gr.add_argument("--tic", type=int, required=True, help="TESS Input Catalog id")
+    gr.add_argument("--survey", default="ztf", choices=["ztf"], help="ground survey")
+    gr.add_argument("--band", default="r", help="photometric band (ZTF: g/r/i)")
+
     agg = sub.add_parser(
         "aggregate", help="build the community leaderboard from contributions/"
     )
@@ -156,6 +165,26 @@ def main(argv: list[str] | None = None) -> int:
                 )
             elif rec.period_constrained is False:
                 print("    period unconstrained (no reliable stellar density)")
+        return 0
+
+    if args.cmd == "ground":
+        from .ground import run_ground_check
+
+        res = run_ground_check(args.tic, survey=args.survey, band=args.band)
+        if res is None:
+            print(f"No {args.survey.upper()} photometry for TIC {args.tic}.")
+            return 0
+        v = res.variability
+        verdict = (
+            "VARIABLE host -> likely a variable star / EB, not a clean mono-transit"
+            if v.is_variable
+            else "quiet host -> consistent with a clean single transit"
+        )
+        print(
+            f"{args.survey.upper()} {args.band}-band TIC {args.tic}: "
+            f"{v.n_epochs} epochs over {v.baseline_days:.0f}d, "
+            f"amplitude {v.frac_amplitude * 100:.1f}% -> {verdict}"
+        )
         return 0
 
     if args.cmd == "ffi-batch":
