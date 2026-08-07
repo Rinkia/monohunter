@@ -17,10 +17,12 @@ dependencies = [
     "lightkurve>=2.5",
     "wotan",
     "astroquery",
+    "requests",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest"]
+ground = ["skypatrol"]   # ASAS-SN Sky Patrol client (pyasassn); ZTF needs only requests
 
 [project.scripts]
 monohunter = "monohunter.cli:main"
