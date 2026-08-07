@@ -140,18 +140,25 @@ def run_ffi_batch(
     tmag_max: float = DEFAULT_TMAG_MAX,
     window_length: float | None = None,
     detector=None,
-) -> tuple[list[BatchDetection], int]:
-    """Download ONE cutout around center_tic, extract every catalog star in it, and
-    run the transit detector on each. Returns detections across all stars.
+    outdir: str = "ffi_candidates",
+    make_plots: bool = False,
+):
+    """Download ONE cutout around center_tic, extract every catalog star in it, run
+    the detector on each, dedup crowding blends, and build a FULL FindRecord for
+    every surviving detection (same characterize + ephemeris + leaderboard path as
+    run_target, via pipeline.build_record). Returns (records, n_blended).
 
     Network — exercised live, not unit-tested. The pure pieces (extract_at_position,
-    extract_batch) carry the offline tests.
+    extract_batch, dedup_blends) carry the offline tests.
     """
     import lightkurve as lk
     from astroquery.mast import Catalogs
 
+    from .crossmatch import known_toi
     from .detect import BoxMatchedFilter
     from .detrend import DEFAULT_WINDOW_D, flatten
+    from .fetch import cadence_seconds, get_stellar_density
+    from .pipeline import _now_btjd, build_record
 
     detector = detector or BoxMatchedFilter()
     win = window_length if window_length is not None else DEFAULT_WINDOW_D
@@ -169,23 +176,39 @@ def run_ffi_batch(
     stars: list[StarPixel] = []
     for r in cat:
         try:
-            tmag = float(r["Tmag"])
-            if tmag > tmag_max:
+            if float(r["Tmag"]) > tmag_max:
                 continue
             col, row = tpf.wcs.all_world2pix(float(r["ra"]), float(r["dec"]), 0)
             stars.append(StarPixel(int(r["ID"]), float(col), float(row)))
         except Exception:
             continue
 
-    detections: list[BatchDetection] = []
+    # Detect per star; keep the light curve so a surviving primary can be fully
+    # characterized (dedup runs on the cheap BatchDetection first, then only the
+    # primaries pay for the trapezoid fit + ephemeris + per-star catalog lookups).
+    hits: dict[int, tuple] = {}
+    dets: list[BatchDetection] = []
     for tic, time, flux in extract_batch(tpf, stars):
         flat, _ = flatten(time, flux, window_length=win)
         for cand in detector.search(time, flat):
-            detections.append(BatchDetection(
-                tic=tic, sector=sector,
-                event_time_btjd=cand.event_time_btjd,
-                depth_ppt=cand.depth_ppt,
-                duration_hr=cand.duration_hr,
-                snr=cand.snr,
-            ))
-    return dedup_blends(detections)   # (primaries, n_blended) — collapse crowding blends
+            det = BatchDetection(
+                tic=tic, sector=sector, event_time_btjd=cand.event_time_btjd,
+                depth_ppt=cand.depth_ppt, duration_hr=cand.duration_hr, snr=cand.snr,
+            )
+            dets.append(det)
+            hits[id(det)] = (time, flat, cand)
+
+    primaries, n_blended = dedup_blends(dets)
+    now_btjd = _now_btjd()
+    records = []
+    for det in primaries:
+        time, flat, cand = hits[id(det)]
+        is_known, toi_id = known_toi(det.tic)
+        rho, rho_err = get_stellar_density(det.tic)
+        records.append(build_record(
+            det.tic, sector, cadence_seconds(time), time, flat, cand,
+            is_known=is_known, toi_id=toi_id, rho_cgs=rho, rho_err_cgs=rho_err,
+            now_btjd=now_btjd, window_length=win, baseline_time=time,
+            n_sectors_observed=1, recurring_dip=False, outdir=outdir, make_plots=make_plots,
+        ))
+    return records, n_blended

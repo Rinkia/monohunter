@@ -73,6 +73,8 @@ def main(argv: list[str] | None = None) -> int:
     fb.add_argument("--sector", type=int, required=True, help="sector to cut")
     fb.add_argument("--cutout", type=int, default=30, help="cutout side in pixels")
     fb.add_argument("--tmag-max", type=float, default=14.0, help="skip stars fainter than this")
+    fb.add_argument("--outdir", default="ffi_candidates", help="where to write JSON + PNG")
+    fb.add_argument("--no-plot", action="store_true", help="skip PNG generation")
 
     agg = sub.add_parser(
         "aggregate", help="build the community leaderboard from contributions/"
@@ -159,18 +161,25 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "ffi-batch":
         from .ffi_batch import run_ffi_batch
 
-        dets, n_blended = run_ffi_batch(
-            args.tic, args.sector, cutout_px=args.cutout, tmag_max=args.tmag_max
+        records, n_blended = run_ffi_batch(
+            args.tic, args.sector, cutout_px=args.cutout, tmag_max=args.tmag_max,
+            outdir=args.outdir, make_plots=not args.no_plot,
         )
         blend_note = f" ({n_blended} crowding blends collapsed)" if n_blended else ""
         print(
             f"FFI batch S{args.sector} around TIC {args.tic} "
-            f"({args.cutout}x{args.cutout}px): {len(dets)} detection(s){blend_note}"
+            f"({args.cutout}x{args.cutout}px): {len(records)} detection(s){blend_note}"
         )
-        for d in sorted(dets, key=lambda x: -x.snr):
+        os.makedirs(args.outdir, exist_ok=True)
+        for rec in sorted(records, key=lambda r: -r.snr):
+            path = os.path.join(args.outdir, f"tic{rec.tic}_s{rec.sector}.json")
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(rec.to_json(indent=2))
+            flag = f"  [known {rec.known_toi_id}]" if rec.known_toi_match else "  [not a known TOI]"
+            eb = "  [likely EB]" if rec.likely_eb else ""
             print(
-                f"  TIC {d.tic}: depth={d.depth_ppt:.2f}ppt dur={d.duration_hr:.0f}h "
-                f"SNR={d.snr:.1f} @ {d.event_time_btjd:.2f} BTJD"
+                f"  TIC {rec.tic}: depth={rec.depth_ppt:.2f}ppt dur={rec.duration_hr:.0f}h "
+                f"SNR={rec.snr:.1f}{flag}{eb} -> {path}"
             )
         return 0
 

@@ -62,6 +62,87 @@ def _save_plot(outdir: str, rec: FindRecord, time: np.ndarray, flux: np.ndarray)
     return path
 
 
+def build_record(
+    tic: int,
+    sector: int,
+    cadence_s: int,
+    time: np.ndarray,
+    flat: np.ndarray,
+    cand,
+    *,
+    is_known: bool,
+    toi_id: str | None,
+    rho_cgs: float | None,
+    rho_err_cgs: float | None,
+    now_btjd: float | None,
+    window_length: float,
+    baseline_time: np.ndarray | None = None,
+    n_sectors_observed: int = 1,
+    recurring_dip: bool = False,
+    outdir: str = "candidates",
+    make_plots: bool = False,
+) -> FindRecord:
+    """Assemble one validated FindRecord from a box candidate: trapezoid-refine,
+    EB flag, ephemeris, optional plot. Shared by run_target and the FFI batch so
+    both paths produce identical, leaderboard-ready records.
+
+    baseline_time overrides the time array fed to the ephemeris p_min (the full
+    multi-sector baseline); defaults to this light curve's own time.
+    """
+    fit = fit_trapezoid(time, flat, cand.event_time_btjd, cand.duration_hr)
+    if fit is not None:
+        t0, depth_ppt, duration_hr, ingress_hr = (
+            fit.t0_btjd, fit.depth_ppt, fit.duration_hr, fit.ingress_hr,
+        )
+    else:
+        t0, depth_ppt, duration_hr, ingress_hr = (
+            cand.event_time_btjd, cand.depth_ppt, cand.duration_hr, None,
+        )
+    rec = FindRecord(
+        tic=int(tic),
+        sector=int(sector),
+        cadence_s=int(cadence_s),
+        event_time_btjd=t0,
+        depth_ppt=depth_ppt,
+        duration_hr=duration_hr,
+        ingress_hr=ingress_hr,
+        snr=cand.snr,
+        detrend_method=DEFAULT_METHOD,
+        detrend_window_d=window_length,
+        tool_version=__version__,
+        known_toi_match=is_known,
+        known_toi_id=toi_id,
+        likely_eb=is_likely_eb(depth_ppt, ingress_hr, duration_hr),
+        n_sectors_observed=n_sectors_observed,
+        recurring_dip=recurring_dip,
+    )
+    post = estimate_period(
+        t0_btjd=t0,
+        t14_hr=duration_hr,
+        ingress_hr=ingress_hr,
+        ingress_err_hr=None,
+        depth_ppt=depth_ppt,
+        rho_star_cgs=rho_cgs,
+        rho_err_cgs=rho_err_cgs,
+        time_array=baseline_time if baseline_time is not None else time,
+        now_btjd=now_btjd,
+        snr=cand.snr,
+        cadence_s=cadence_s,
+    )
+    rec = rec.model_copy(update={
+        "stellar_density_cgs": rho_cgs,
+        "period_constrained": post.period_constrained,
+        "p_min_d": post.p_min_d,
+        "p_best_d": post.p_best_d,
+        "p_lo_d": post.p16_d,
+        "p_hi_d": post.p84_d,
+        "next_window_btjd": list(post.next_window_btjd) if post.next_window_btjd else None,
+    })
+    if make_plots:
+        rec = rec.model_copy(update={"plot_path": _save_plot(outdir, rec, time, flat)})
+    return rec
+
+
 def run_target(
     tic: int,
     detector: Detector | None = None,
@@ -109,21 +190,9 @@ def run_target(
         all_times.append(time)
         flat, _ = flatten(time, flux, window_length=window_length)
         for cand in detector.search(time, flat):
-            # Refine box depth/duration with a trapezoid fit (box dilutes depth).
-            fit = fit_trapezoid(time, flat, cand.event_time_btjd, cand.duration_hr)
-            if fit is not None:
-                t0, depth_ppt, duration_hr, ingress_hr = (
-                    fit.t0_btjd, fit.depth_ppt, fit.duration_hr, fit.ingress_hr,
-                )
-            else:
-                t0, depth_ppt, duration_hr, ingress_hr = (
-                    cand.event_time_btjd, cand.depth_ppt, cand.duration_hr, None,
-                )
             pending.append({
                 "sector": int(row["sector"]), "cadence_s": cadence_s,
-                "t0": t0, "depth_ppt": depth_ppt, "duration_hr": duration_hr,
-                "ingress_hr": ingress_hr, "snr": cand.snr,
-                "time": time, "flat": flat,   # kept for the diagnostic plot
+                "cand": cand, "time": time, "flat": flat,
             })
 
     # Pass 2 — cross-sector context. A real long-period single transit shows in
@@ -134,51 +203,16 @@ def run_target(
     n_sectors = len(all_times)
     recurring = len({p["sector"] for p in pending}) > 1
 
-    records: list[FindRecord] = []
-    for p in pending:
-        rec = FindRecord(
-            tic=int(tic),
-            sector=p["sector"],
-            cadence_s=p["cadence_s"],
-            event_time_btjd=p["t0"],
-            depth_ppt=p["depth_ppt"],
-            duration_hr=p["duration_hr"],
-            ingress_hr=p["ingress_hr"],
-            snr=p["snr"],
-            detrend_method=DEFAULT_METHOD,
-            detrend_window_d=window_length,
-            tool_version=__version__,
-            known_toi_match=is_known,
-            known_toi_id=toi_id,
-            likely_eb=is_likely_eb(p["depth_ppt"], p["ingress_hr"], p["duration_hr"]),
-            n_sectors_observed=n_sectors,
-            recurring_dip=recurring,
+    records: list[FindRecord] = [
+        build_record(
+            tic, p["sector"], p["cadence_s"], p["time"], p["flat"], p["cand"],
+            is_known=is_known, toi_id=toi_id, rho_cgs=rho_cgs, rho_err_cgs=rho_err_cgs,
+            now_btjd=now_btjd, window_length=window_length, baseline_time=full_time,
+            n_sectors_observed=n_sectors, recurring_dip=recurring,
+            outdir=outdir, make_plots=make_plots,
         )
-        post = estimate_period(
-            t0_btjd=p["t0"],
-            t14_hr=p["duration_hr"],
-            ingress_hr=p["ingress_hr"],
-            ingress_err_hr=None,
-            depth_ppt=p["depth_ppt"],
-            rho_star_cgs=rho_cgs,
-            rho_err_cgs=rho_err_cgs,
-            time_array=full_time if full_time is not None else p["time"],
-            now_btjd=now_btjd,
-            snr=p["snr"],
-            cadence_s=p["cadence_s"],
-        )
-        rec = rec.model_copy(update={
-            "stellar_density_cgs": rho_cgs,
-            "period_constrained": post.period_constrained,
-            "p_min_d": post.p_min_d,
-            "p_best_d": post.p_best_d,
-            "p_lo_d": post.p16_d,
-            "p_hi_d": post.p84_d,
-            "next_window_btjd": list(post.next_window_btjd) if post.next_window_btjd else None,
-        })
-        if make_plots:
-            rec = rec.model_copy(update={"plot_path": _save_plot(outdir, rec, p["time"], p["flat"])})
-        records.append(rec)
+        for p in pending
+    ]
 
     # Exact period from the multiple transit times (a recurring target's real win):
     # >=3 transits pin the period uniquely; 2 use the rho*-based estimate to pick the
