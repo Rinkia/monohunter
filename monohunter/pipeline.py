@@ -96,70 +96,87 @@ def run_target(
     rho_cgs, rho_err_cgs = get_stellar_density(tic)
     now_btjd = _now_btjd()
 
-    records: list[FindRecord] = []
+    # Pass 1 — stream sectors: detect candidates and accumulate every sector's
+    # TIME coverage (times only; flux kept just for candidate-bearing sectors, so
+    # memory stays bounded). Ephemeris waits for the full baseline (pass 2).
+    all_times: list[np.ndarray] = []
+    pending: list[dict] = []
     for row, lc in iter_lightcurves(rows, download):
         time = _values(lc.time.value if hasattr(lc.time, "value") else lc.time)
         flux = _values(lc.flux)
         # SPOC rows carry cadence from the search table; FFI rows are 0 -> measure it.
         cadence_s = int(row["cadence_s"]) or cadence_seconds(time)
+        all_times.append(time)
         flat, _ = flatten(time, flux, window_length=window_length)
         for cand in detector.search(time, flat):
             # Refine box depth/duration with a trapezoid fit (box dilutes depth).
             fit = fit_trapezoid(time, flat, cand.event_time_btjd, cand.duration_hr)
             if fit is not None:
                 t0, depth_ppt, duration_hr, ingress_hr = (
-                    fit.t0_btjd,
-                    fit.depth_ppt,
-                    fit.duration_hr,
-                    fit.ingress_hr,
+                    fit.t0_btjd, fit.depth_ppt, fit.duration_hr, fit.ingress_hr,
                 )
             else:
                 t0, depth_ppt, duration_hr, ingress_hr = (
-                    cand.event_time_btjd,
-                    cand.depth_ppt,
-                    cand.duration_hr,
-                    None,
+                    cand.event_time_btjd, cand.depth_ppt, cand.duration_hr, None,
                 )
-            rec = FindRecord(
-                tic=int(tic),
-                sector=int(row["sector"]),
-                cadence_s=cadence_s,
-                event_time_btjd=t0,
-                depth_ppt=depth_ppt,
-                duration_hr=duration_hr,
-                ingress_hr=ingress_hr,
-                snr=cand.snr,
-                detrend_method=DEFAULT_METHOD,
-                detrend_window_d=window_length,
-                tool_version=__version__,
-                known_toi_match=is_known,
-                known_toi_id=toi_id,
-                likely_eb=is_likely_eb(depth_ppt, ingress_hr, duration_hr),
-            )
-            # Ephemeris: constrain the period + predict the next transit.
-            post = estimate_period(
-                t0_btjd=t0,
-                t14_hr=duration_hr,
-                ingress_hr=ingress_hr,
-                ingress_err_hr=None,
-                depth_ppt=depth_ppt,
-                rho_star_cgs=rho_cgs,
-                rho_err_cgs=rho_err_cgs,
-                time_array=time,
-                now_btjd=now_btjd,
-                snr=cand.snr,
-                cadence_s=cadence_s,
-            )
-            rec = rec.model_copy(update={
-                "stellar_density_cgs": rho_cgs,
-                "period_constrained": post.period_constrained,
-                "p_min_d": post.p_min_d,
-                "p_best_d": post.p_best_d,
-                "p_lo_d": post.p16_d,
-                "p_hi_d": post.p84_d,
-                "next_window_btjd": list(post.next_window_btjd) if post.next_window_btjd else None,
+            pending.append({
+                "sector": int(row["sector"]), "cadence_s": cadence_s,
+                "t0": t0, "depth_ppt": depth_ppt, "duration_hr": duration_hr,
+                "ingress_hr": ingress_hr, "snr": cand.snr,
+                "time": time, "flat": flat,   # kept for the diagnostic plot
             })
-            if make_plots:
-                rec = rec.model_copy(update={"plot_path": _save_plot(outdir, rec, time, flat)})
-            records.append(rec)
+
+    # Pass 2 — cross-sector context. A real long-period single transit shows in
+    # ONE sector; dips in MULTIPLE sectors mean a periodic/variable star (EB), not
+    # a clean mono-transit. The ephemeris uses the FULL multi-sector baseline, so a
+    # 2nd transit ruled out across every observed sector raises p_min.
+    full_time = np.concatenate(all_times) if all_times else None
+    n_sectors = len(all_times)
+    recurring = len({p["sector"] for p in pending}) > 1
+
+    records: list[FindRecord] = []
+    for p in pending:
+        rec = FindRecord(
+            tic=int(tic),
+            sector=p["sector"],
+            cadence_s=p["cadence_s"],
+            event_time_btjd=p["t0"],
+            depth_ppt=p["depth_ppt"],
+            duration_hr=p["duration_hr"],
+            ingress_hr=p["ingress_hr"],
+            snr=p["snr"],
+            detrend_method=DEFAULT_METHOD,
+            detrend_window_d=window_length,
+            tool_version=__version__,
+            known_toi_match=is_known,
+            known_toi_id=toi_id,
+            likely_eb=is_likely_eb(p["depth_ppt"], p["ingress_hr"], p["duration_hr"]),
+            n_sectors_observed=n_sectors,
+            recurring_dip=recurring,
+        )
+        post = estimate_period(
+            t0_btjd=p["t0"],
+            t14_hr=p["duration_hr"],
+            ingress_hr=p["ingress_hr"],
+            ingress_err_hr=None,
+            depth_ppt=p["depth_ppt"],
+            rho_star_cgs=rho_cgs,
+            rho_err_cgs=rho_err_cgs,
+            time_array=full_time if full_time is not None else p["time"],
+            now_btjd=now_btjd,
+            snr=p["snr"],
+            cadence_s=p["cadence_s"],
+        )
+        rec = rec.model_copy(update={
+            "stellar_density_cgs": rho_cgs,
+            "period_constrained": post.period_constrained,
+            "p_min_d": post.p_min_d,
+            "p_best_d": post.p_best_d,
+            "p_lo_d": post.p16_d,
+            "p_hi_d": post.p84_d,
+            "next_window_btjd": list(post.next_window_btjd) if post.next_window_btjd else None,
+        })
+        if make_plots:
+            rec = rec.model_copy(update={"plot_path": _save_plot(outdir, rec, p["time"], p["flat"])})
+        records.append(rec)
     return records

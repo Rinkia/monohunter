@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-SCHEMA_VERSION = 4  # v4 adds likely_eb (depth-based eclipsing-binary flag)
+SCHEMA_VERSION = 5  # v5 adds multi-sector context (n_sectors_observed, recurring_dip)
 
 
 class FindRecord(BaseModel):
@@ -45,6 +45,12 @@ class FindRecord(BaseModel):
     p_lo_d: float | None = None            # 16th percentile
     p_hi_d: float | None = None            # 84th percentile
     next_window_btjd: list[float] | None = None  # [5%, 50%, 95%] of next transit
+
+    # v5 multi-sector context
+    n_sectors_observed: int | None = None   # sectors searched for this target
+    recurring_dip: bool | None = None        # dips in >1 sector -> periodic/variable,
+    # not a clean single transit; the period is constrained by the FULL multi-sector
+    # baseline (a 2nd transit ruled out across all observed sectors raises p_min)
 
     def to_json(self, **kwargs: object) -> str:
         return self.model_dump_json(**kwargs)  # type: ignore[arg-type]

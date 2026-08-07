@@ -124,9 +124,10 @@ def main(argv: list[str] | None = None) -> int:
                 fh.write(rec.to_json(indent=2))
             flag = f"  [known {rec.known_toi_id}]" if rec.known_toi_match else "  [not a known TOI]"
             eb = "  [likely EB]" if rec.likely_eb else ""
+            rec_flag = "  [recurring: dips in >1 sector - periodic/variable]" if rec.recurring_dip else ""
             print(
                 f"S{rec.sector}: depth={rec.depth_ppt:.2f}ppt "
-                f"dur={rec.duration_hr:.0f}h SNR={rec.snr:.1f}{flag}{eb} -> {path}"
+                f"dur={rec.duration_hr:.0f}h SNR={rec.snr:.1f}{flag}{eb}{rec_flag} -> {path}"
             )
             if rec.period_constrained and rec.p_best_d:
                 nxt = ""

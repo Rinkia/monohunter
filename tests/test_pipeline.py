@@ -43,14 +43,25 @@ class _FakeSR:
         return _FakeSel(self._lc)
 
 
-def _lc_with_dip():
+def _lc_with_dip(t0_offset_d=0.0, seed=3, with_dip=True):
     dt = 2.0 / (60 * 24)  # 2-min cadence in days
-    time = np.arange(15000) * dt  # realistic ~21-day sector length
-    rng = np.random.default_rng(3)
+    time = np.arange(15000) * dt + t0_offset_d  # realistic ~21-day sector length
+    rng = np.random.default_rng(seed)
     flux = 1.0 + rng.normal(0, 5e-4, size=time.size)
-    c = time.size // 2
-    flux[c - 360 : c + 360] -= 6e-3  # ~24h, 6 ppt dip
+    if with_dip:
+        c = time.size // 2
+        flux[c - 360 : c + 360] -= 6e-3  # ~24h, 6 ppt dip
     return time, flux
+
+
+class _FakeMultiSR:
+    """Maps each row's _index to its own (time, flux) light curve."""
+
+    def __init__(self, lcs_by_index):
+        self._lcs = lcs_by_index
+
+    def __getitem__(self, idx):
+        return _FakeSel(_FakeLC(*self._lcs[idx]))
 
 
 def test_run_target_builds_valid_record(monkeypatch, tmp_path):
@@ -81,6 +92,9 @@ def test_run_target_builds_valid_record(monkeypatch, tmp_path):
     assert rec.period_constrained is True
     assert rec.p_best_d and rec.p_best_d > rec.p_min_d
     assert rec.next_window_btjd and len(rec.next_window_btjd) == 3
+    # single sector -> not recurring
+    assert rec.n_sectors_observed == 1
+    assert rec.recurring_dip is False
     # plot actually written
     import os
 
@@ -116,6 +130,55 @@ def test_sectors_filter_excludes_others(monkeypatch, tmp_path):
         1, outdir=str(tmp_path), make_plots=False, sectors=[25]
     )
     assert {r.sector for r in records} == {25}
+
+
+def test_recurring_dip_across_two_sectors(monkeypatch, tmp_path):
+    # Same star dips in TWO sectors -> periodic/variable, not a clean mono-transit.
+    lc0 = _lc_with_dip(seed=3)
+    lc1 = _lc_with_dip(t0_offset_d=40.0, seed=4)   # a second sector, also dipping
+    fake_sr = _FakeMultiSR({0: lc0, 1: lc1})
+    rows = [
+        {"sector": 25, "cadence_s": 120, "_index": 0},
+        {"sector": 40, "cadence_s": 120, "_index": 1},
+    ]
+    monkeypatch.setattr(pipeline, "search_tess", lambda tic: (fake_sr, rows))
+    monkeypatch.setattr(pipeline, "known_toi", lambda tic: (False, None))
+    monkeypatch.setattr(pipeline, "get_stellar_density", lambda tic: (0.3, 0.05))
+
+    records = pipeline.run_target(1, outdir=str(tmp_path), make_plots=False)
+    assert {r.sector for r in records} == {25, 40}
+    assert all(r.recurring_dip is True for r in records)      # flagged in every record
+    assert all(r.n_sectors_observed == 2 for r in records)
+
+
+def test_quiet_second_sector_not_recurring_and_baseline_not_worse(monkeypatch, tmp_path):
+    # Dip in sector 25 only; sector 40 observed but quiet. NOT recurring, and the
+    # full multi-sector baseline can only raise (never lower) the p_min bound.
+    dip = _lc_with_dip(seed=3)
+    quiet = _lc_with_dip(t0_offset_d=40.0, seed=7, with_dip=False)
+
+    monkeypatch.setattr(pipeline, "known_toi", lambda tic: (False, None))
+    monkeypatch.setattr(pipeline, "get_stellar_density", lambda tic: (0.3, 0.05))
+
+    # single sector
+    monkeypatch.setattr(pipeline, "search_tess",
+                        lambda tic: (_FakeMultiSR({0: dip}), [{"sector": 25, "cadence_s": 120, "_index": 0}]))
+    single = pipeline.run_target(1, outdir=str(tmp_path), make_plots=False)[0]
+
+    # add a quiet later sector
+    rows = [
+        {"sector": 25, "cadence_s": 120, "_index": 0},
+        {"sector": 40, "cadence_s": 120, "_index": 1},
+    ]
+    monkeypatch.setattr(pipeline, "search_tess",
+                        lambda tic: (_FakeMultiSR({0: dip, 1: quiet}), rows))
+    multi = pipeline.run_target(1, outdir=str(tmp_path), make_plots=False)
+
+    assert len(multi) == 1                          # only the dipping sector yields a candidate
+    rec = multi[0]
+    assert rec.recurring_dip is False               # a quiet 2nd sector is not recurrence
+    assert rec.n_sectors_observed == 2
+    assert rec.p_min_d >= single.p_min_d            # more coverage never lowers the bound
 
 
 def test_cli_run_wires_through(monkeypatch, tmp_path, capsys):
