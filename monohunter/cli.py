@@ -82,8 +82,11 @@ def main(argv: list[str] | None = None) -> int:
         "the host quiet over years, or a variable star / EB?",
     )
     gr.add_argument("--tic", type=int, required=True, help="TESS Input Catalog id")
-    gr.add_argument("--survey", default="ztf", choices=["ztf"], help="ground survey")
-    gr.add_argument("--band", default="r", help="photometric band (ZTF: g/r/i)")
+    gr.add_argument("--survey", default="ztf", choices=["ztf", "asassn"], help="ground survey")
+    gr.add_argument(
+        "--band", default=None,
+        help="photometric band (default r for ztf, g for asassn; ZTF g/r/i, ASAS-SN g/V)",
+    )
 
     agg = sub.add_parser(
         "aggregate", help="build the community leaderboard from contributions/"
@@ -175,13 +178,14 @@ def main(argv: list[str] | None = None) -> int:
             print(f"No {args.survey.upper()} photometry for TIC {args.tic}.")
             return 0
         v = res.variability
+        survey_name = {"ztf": "ZTF", "asassn": "ASAS-SN"}.get(args.survey, args.survey.upper())
         verdict = (
             "VARIABLE host -> likely a variable star / EB, not a clean mono-transit"
             if v.is_variable
             else "quiet host -> consistent with a clean single transit"
         )
         print(
-            f"{args.survey.upper()} {args.band}-band TIC {args.tic}: "
+            f"{survey_name} {res.band}-band TIC {args.tic}: "
             f"{v.n_epochs} epochs over {v.baseline_days:.0f}d, "
             f"amplitude {v.frac_amplitude * 100:.1f}% -> {verdict}"
         )

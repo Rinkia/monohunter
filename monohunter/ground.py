@@ -106,6 +106,41 @@ def fetch_ztf_lightcurve(ra: float, dec: float, radius_arcsec: float = 8.0, band
     return mjd, mag
 
 
+def _select_asassn_source(data, band: str):
+    """Pick the ASAS-SN source with the most good-quality epochs in `band`.
+
+    data has columns asas_sn_id, jd, mag, quality ('G'/'B'), phot_filter ('g'/'V').
+    Pure (takes the DataFrame) so it unit-tests without the network. Returns
+    (jd, mag) arrays, empty if nothing usable.
+    """
+    good = data[(data["quality"] == "G") & (data["phot_filter"] == band)]
+    if len(good) == 0:
+        return np.array([]), np.array([])
+    best_id = good["asas_sn_id"].value_counts().idxmax()
+    sub = good[good["asas_sn_id"] == best_id].sort_values("jd")
+    return sub["jd"].to_numpy(dtype=float), sub["mag"].to_numpy(dtype=float)
+
+
+def fetch_asassn_lightcurve(ra: float, dec: float, radius_arcsec: float = 16.0, band: str = "g"):
+    """ASAS-SN photometry near (ra, dec) via the Sky Patrol client (pyasassn).
+
+    Larger cone than ZTF (~16") — ASAS-SN's ~8"/px pixels and broad PSF put the
+    source further from the catalog centroid. Returns (jd, mag) for the most-
+    sampled source. Empty on any failure (incl. pyasassn not installed). Network.
+    """
+    try:
+        from pyasassn.client import SkyPatrolClient
+
+        client = SkyPatrolClient(verbose=False)
+        lcs = client.cone_search(
+            ra, dec, radius_arcsec, units="arcsec", catalog="master_list",
+            download=True, threads=1,
+        )
+        return _select_asassn_source(lcs.data, band)
+    except Exception:
+        return np.array([]), np.array([])
+
+
 @dataclass(frozen=True)
 class GroundCheck:
     tic: int
@@ -114,7 +149,11 @@ class GroundCheck:
     variability: Variability
 
 
-def run_ground_check(tic: int, survey: str = "ztf", band: str = "r") -> GroundCheck | None:
+# Each survey's natural default band (ZTF has g/r/i; ASAS-SN g/V).
+_DEFAULT_BAND = {"ztf": "r", "asassn": "g"}
+
+
+def run_ground_check(tic: int, survey: str = "ztf", band: str | None = None) -> GroundCheck | None:
     """Resolve a TIC to coordinates, pull its ground light curve, and measure how
     variable the host is over the survey baseline. None if no photometry. Network.
     """
@@ -124,13 +163,16 @@ def run_ground_check(tic: int, survey: str = "ztf", band: str = "r") -> GroundCh
     if len(cat) == 0:
         return None
     ra, dec = float(cat[0]["ra"]), float(cat[0]["dec"])
+    band = band or _DEFAULT_BAND.get(survey, "r")
 
     if survey == "ztf":
-        mjd, mag = fetch_ztf_lightcurve(ra, dec, band=band)
+        t, mag = fetch_ztf_lightcurve(ra, dec, band=band)
+    elif survey == "asassn":
+        t, mag = fetch_asassn_lightcurve(ra, dec, band=band)
     else:
-        raise ValueError(f"unsupported survey {survey!r} (ztf only for now)")
+        raise ValueError(f"unsupported survey {survey!r} (ztf, asassn)")
 
     if mag.size == 0:
         return None
     flux = mag_to_flux(mag)
-    return GroundCheck(int(tic), survey, band, variability(mjd, flux))
+    return GroundCheck(int(tic), survey, band, variability(t, flux))

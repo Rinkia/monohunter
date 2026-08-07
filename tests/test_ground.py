@@ -2,7 +2,35 @@
 
 import numpy as np
 
-from monohunter.ground import mag_to_flux, variability
+from monohunter.ground import _select_asassn_source, mag_to_flux, variability
+
+
+def test_asassn_source_selection_picks_best_good_band():
+    import pandas as pd
+
+    df = pd.DataFrame({
+        "asas_sn_id": [1, 1, 1, 2, 1, 1],
+        "jd":         [2459.0, 2458.0, 2460.0, 2461.0, 2462.0, 2463.0],
+        "mag":        [11.0, 11.1, 10.9, 15.0, 11.2, 11.05],
+        "quality":    ["G", "G", "G", "G", "B", "G"],       # one bad epoch
+        "phot_filter": ["g", "g", "g", "g", "g", "V"],       # one wrong band
+    })
+    jd, mag = _select_asassn_source(df, band="g")
+    # source 1 (4 good g epochs) beats source 2 (1); bad-quality + V-band dropped
+    assert len(jd) == 3
+    assert list(jd) == sorted(jd)                # returned time-sorted
+    assert 15.0 not in mag                       # the other source excluded
+
+
+def test_asassn_source_selection_empty_when_no_band_match():
+    import pandas as pd
+
+    df = pd.DataFrame({
+        "asas_sn_id": [1], "jd": [2459.0], "mag": [11.0],
+        "quality": ["G"], "phot_filter": ["V"],
+    })
+    jd, mag = _select_asassn_source(df, band="g")
+    assert jd.size == 0 and mag.size == 0
 
 
 def test_mag_to_flux_constant_is_unity():
