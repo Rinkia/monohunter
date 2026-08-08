@@ -20,7 +20,8 @@ from one ~24-hour transit). monohunter targets that gap.
 pip install monohunter
 ```
 
-Python 3.10+. Pulls in lightkurve, wotan, astroquery, scipy, matplotlib.
+Python 3.10+. Pulls in lightkurve, wotan, astroquery, scipy, matplotlib. The
+ASAS-SN ground cross-check needs one extra: `pip install monohunter[ground]`.
 
 ## Usage
 
@@ -36,7 +37,7 @@ canonical mono-transit — restrict to its sector to keep it quick):
 
 ```bash
 monohunter run --tic 298663873 --sectors 19
-# S19: depth=4.09ppt dur=24h SNR=165.3  [known TOI-2180.01] -> candidates/tic298663873_s19.json
+# S19: depth=4.09ppt dur=24h SNR=39.4  [known TOI-2180.01] -> candidates/tic298663873_s19.json
 ```
 
 ### Options
@@ -48,6 +49,7 @@ monohunter run --tic 298663873 --sectors 19
 | `--window <days>` | `3.0` | detrend window; must be **several × the transit duration** or flattening eats the dip |
 | `--outdir <path>` | `candidates` | where JSON + PNG are written |
 | `--no-plot` | off | skip PNG generation |
+| `--ffi` | off | extract from the Full-Frame Images via TESScut — reaches stars with **no** pre-made SPOC/QLP light curve |
 
 ### Reading a result
 
@@ -55,7 +57,7 @@ Each candidate is one JSON file:
 
 ```json
 {
-  "schema_version": 2,
+  "schema_version": 6,
   "tic": 298663873,
   "sector": 19,
   "cadence_s": 120,
@@ -63,12 +65,19 @@ Each candidate is one JSON file:
   "depth_ppt": 4.09,
   "duration_hr": 23.8,
   "ingress_hr": 2.29,
-  "snr": 165.3,
-  "detrend_method": "biweight",
-  "detrend_window_d": 3.0,
-  "tool_version": "0.1.0",
+  "snr": 39.4,
+  "tool_version": "0.2.0",
   "known_toi_match": true,
   "known_toi_id": "TOI-2180.01",
+  "likely_eb": false,
+  "period_constrained": true,
+  "p_best_d": 856.0,
+  "p_lo_d": 396.0,
+  "p_hi_d": 1946.0,
+  "next_window_btjd": [3200.0, 3245.0, 3290.0],
+  "n_sectors_observed": 1,
+  "recurring_dip": false,
+  "measured_period_d": null,
   "plot_path": "candidates/tic298663873_s19.png"
 }
 ```
@@ -81,6 +90,10 @@ Each candidate is one JSON file:
 | `ingress_hr` | ingress/egress time from the trapezoid fit (`null` if uncharacterized) |
 | `snr` | detection signal-to-noise; the tool reports candidates at SNR ≥ 7 |
 | `known_toi_match` / `known_toi_id` | whether the target is an existing TESS Object of Interest |
+| `likely_eb` | too deep / V-shaped for a planet — flagged as a likely eclipsing binary (labelled, not rejected) |
+| `p_best_d`, `p_lo_d`, `p_hi_d` | single-transit period estimate + range (see Next-transit ephemeris) |
+| `n_sectors_observed`, `recurring_dip` | multi-sector context: dips in >1 sector flag a periodic/variable star |
+| `measured_period_d` | exact period fitted from multiple transit times, when the target recurs across sectors |
 
 **Always look at the PNG.** SNR alone lies — confirm the marked dip is a real,
 centered transit, not a sector-edge ramp, a data gap, or a single bad cadence.
@@ -101,11 +114,15 @@ fetch      search TESS, dedup sectors (prefer 2-min), quality-mask (hard),
 detrend    wotan biweight; window must be >> transit or the dip is flattened away
    |
 detect     matched-filter box scan (non-periodic — finds a SINGLE transit),
-           edge-guarded against sector-boundary ramps
+           red-noise-aware SNR + 7 false-positive guards (edge / gap / scatter /
+           momentum-dump ramps)
    |
-characterize   trapezoid fit -> true depth, duration, ingress
+characterize   trapezoid fit -> true depth, duration, ingress; EB flag
    |
 cross-match    flag known TESS Objects of Interest (NASA Exoplanet Archive)
+   |
+ephemeris      period + next-transit window (single-transit, or exact from
+           multiple sectors); multi-sector recurrence flag
    |
 FindRecord     versioned + validated JSON  ->  candidates/
 ```
@@ -163,6 +180,49 @@ Single-transit periods are inherently uncertain (a range, not a precise value) �
 the output is a targeting window for follow-up, not a confirmed ephemeris. If the
 stellar density is missing or too uncertain, monohunter reports the period as
 unconstrained rather than guessing.
+
+**Multi-sector sharpens both.** A target that dips in more than one sector is
+flagged `recurring_dip` (periodic/variable, not a clean mono-transit), and once
+it transits in ≥3 sectors the exact period is fitted from the transit times
+(`measured_period_d`) — vastly tighter than the single-transit range.
+
+## More commands
+
+**Anomaly detection** — flares (brightenings) and dippers (aperiodic multi-dip
+young stars), on the same light curves:
+
+```bash
+monohunter anomaly --tic 441420236     # AU Mic: flares detected
+```
+
+**FFI reach** — extract from the Full-Frame Images to search stars with no
+pre-made light curve. One target (`run --ffi`), or a whole cutout at once:
+
+```bash
+monohunter ffi-batch --tic <center> --sector 14   # every catalog star in one cutout
+```
+
+**Ground cross-check** — is a candidate's host quiet over years, or a variable
+star / eclipsing binary? Confirm against ZTF or ASAS-SN:
+
+```bash
+monohunter ground --tic 198382838 --survey ztf     # or --survey asassn
+```
+
+**Faster sweeps** — `watch` (and the sweep scripts) take `--workers N` for
+parallel MAST downloads (network-bound; keep it modest, 4-8).
+
+**Crowd vetting + triage** — turn a pile of candidates into a labelled queue,
+then rank future survivors by how much they deserve a human's eyes:
+
+```bash
+monohunter vet --candidates candidates --out _vet      # static page: PNGs + label buttons
+monohunter triage-train --labels labels/seed_labels.csv --sweeps sweeps
+monohunter triage --candidates candidates              # ranks by P(worth vetting)
+```
+
+The vetting page exports labels as JSON; those labels train the triage model,
+which then puts the real finds at the top of the next sweep's queue.
 
 ## Community leaderboard (swarm)
 
@@ -222,9 +282,9 @@ One-time PyPI setup (before the first release):
 Then release:
 
 ```bash
-# bump version in pyproject.toml first
-git tag v0.1.0
-git push --tags
+# bump version in pyproject.toml + monohunter/__init__.py, update CHANGELOG.md
+git tag vX.Y.Z
+git push origin vX.Y.Z
 ```
 
 ## License
