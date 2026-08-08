@@ -19,3 +19,4 @@ _site/
 sweeps/
 sweep_out/
 sweep_vet*/
+triage_model.pkl

@@ -88,6 +88,15 @@ def main(argv: list[str] | None = None) -> int:
         help="photometric band (default r for ztf, g for asassn; ZTF g/r/i, ASAS-SN g/V)",
     )
 
+    tt = sub.add_parser("triage-train", help="train the ML triage model from labels + sweep CSVs")
+    tt.add_argument("--labels", default="labels/seed_labels.csv", help="tic,label CSV (1=interesting)")
+    tt.add_argument("--sweeps", default="sweeps", help="dir of sweep CSVs (feature source)")
+    tt.add_argument("--out", default="triage_model.pkl", help="output model path")
+
+    tr = sub.add_parser("triage", help="rank candidate records by P(worth vetting)")
+    tr.add_argument("--model", default="triage_model.pkl", help="trained model path")
+    tr.add_argument("--candidates", required=True, help="dir of candidate record JSONs")
+
     vet = sub.add_parser(
         "vet", help="build a static crowd-vetting page (candidate PNGs + label buttons)"
     )
@@ -236,6 +245,33 @@ def main(argv: list[str] | None = None) -> int:
             for fl in flares:
                 print(f"    flare @ {fl.t_peak_btjd:.2f} BTJD  "
                       f"+{fl.amplitude_ppt:.1f}ppt  {fl.duration_hr:.1f}h  ({fl.n_points} pts)")
+        return 0
+
+    if args.cmd == "triage-train":
+        from .triage import cross_val_accuracy, load_training_data, save_model, train
+
+        X, y, tics = load_training_data(args.sweeps, args.labels)
+        if len(y) < 4:
+            print(f"Not enough labelled survivors found ({len(y)}); need >=4.")
+            return 1
+        acc = cross_val_accuracy(X, y)
+        model = train(X, y)
+        save_model(model, args.out)
+        pos = int(sum(y))
+        print(
+            f"trained on {len(y)} labelled survivors ({pos} interesting / {len(y) - pos} junk), "
+            f"leave-one-out accuracy {acc:.0%} -> {args.out}"
+        )
+        return 0
+
+    if args.cmd == "triage":
+        from .triage import load_model, rank_candidates
+
+        model = load_model(args.model)
+        ranked = rank_candidates(model, args.candidates)
+        print(f"{len(ranked)} candidate(s) ranked by P(worth vetting):")
+        for tic, sector, p in ranked:
+            print(f"  P={p:.2f}  TIC {tic} S{sector}")
         return 0
 
     if args.cmd == "vet":
