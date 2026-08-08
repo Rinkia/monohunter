@@ -103,6 +103,7 @@ def watch(
     runner: Callable[[int], list[FindRecord]] | None = None,
     source: str = "spoc",
     workers: int = 1,
+    summaries_dir: str | None = None,
 ) -> WatchResult:
     """Process the next `max_targets` un-scanned TICs of `sector`. Resumable.
 
@@ -122,7 +123,8 @@ def watch(
     os.makedirs(outdir, exist_ok=True)
     run = runner or (
         lambda tic: run_target(
-            tic, sectors=[sector], make_plots=False, outdir=outdir, source=source
+            tic, sectors=[sector], make_plots=False, outdir=outdir, source=source,
+            summaries_dir=summaries_dir,
         )
     )
     tics = target_pool if target_pool is not None else sector_targets(sector)

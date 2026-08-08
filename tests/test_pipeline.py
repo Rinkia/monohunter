@@ -181,6 +181,28 @@ def test_quiet_second_sector_not_recurring_and_baseline_not_worse(monkeypatch, t
     assert rec.p_min_d >= single.p_min_d            # more coverage never lowers the bound
 
 
+def test_summaries_dir_writes_a_stellar_summary(monkeypatch, tmp_path):
+    import json
+
+    from monohunter.summary import StellarSummary
+
+    time, flux = _lc_with_dip()
+    fake_sr = _FakeSR(_FakeLC(time, flux))
+    rows = [{"sector": 25, "cadence_s": 120, "_index": 0}]
+    monkeypatch.setattr(pipeline, "search_tess", lambda tic: (fake_sr, rows))
+    monkeypatch.setattr(pipeline, "known_toi", lambda tic: (False, None))
+    monkeypatch.setattr(pipeline, "get_stellar_density", lambda tic: (0.3, 0.05))
+
+    sdir = tmp_path / "summaries"
+    pipeline.run_target(42, outdir=str(tmp_path), make_plots=False, summaries_dir=str(sdir))
+
+    spath = sdir / "tic42_s25.json"
+    assert spath.exists()                                  # summary written from the same download
+    s = StellarSummary(**json.loads(spath.read_text()))
+    assert s.tic == 42 and s.sector == 25
+    assert s.var_class in {"quiet", "rotator", "variable", "flaring", "dipper"}
+
+
 def test_cli_run_wires_through(monkeypatch, tmp_path, capsys):
     from monohunter import cli
 

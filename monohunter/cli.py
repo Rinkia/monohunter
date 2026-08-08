@@ -53,6 +53,11 @@ def main(argv: list[str] | None = None) -> int:
         help="extract from TESS Full-Frame Images via TESScut (reaches stars with "
         "no pre-made SPOC/QLP light curve); cadence is measured from the data",
     )
+    run.add_argument(
+        "--summaries", default=None, metavar="DIR",
+        help="also write a stellar summary (rotation/variability/flares/dipper) per "
+        "sector here — a catalog product from the same download",
+    )
 
     ano = sub.add_parser(
         "anomaly", help="scan a target for flares (brightenings) and dipper behavior"
@@ -153,6 +158,11 @@ def main(argv: list[str] | None = None) -> int:
         default=4,
         help="parallel MAST downloads (network-bound; keep modest, 4-8)",
     )
+    wat.add_argument(
+        "--summaries", default=None, metavar="DIR",
+        help="also write a stellar summary per scanned star here (rotation/"
+        "variability catalog from the same downloads)",
+    )
 
     args = parser.parse_args(argv)
 
@@ -164,6 +174,7 @@ def main(argv: list[str] | None = None) -> int:
             make_plots=not args.no_plot,
             sectors=args.sectors,
             source="ffi" if args.ffi else "spoc",
+            summaries_dir=args.summaries,
         )
         if not records:
             print(f"No candidates for TIC {args.tic} (nothing above SNR threshold).")
@@ -370,6 +381,7 @@ def main(argv: list[str] | None = None) -> int:
             max_targets=args.max,
             source="ffi" if args.ffi else "spoc",
             workers=args.workers,
+            summaries_dir=args.summaries,
         )
         print(
             f"sector {res.sector}: scanned {res.scanned}, "

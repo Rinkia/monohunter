@@ -48,6 +48,28 @@ def _values(array: object) -> np.ndarray:
     return np.asarray(getattr(array, "value", array), dtype=float)
 
 
+def _write_summary(
+    outdir: str, tic: int, sector: int, cadence_s: int,
+    time: np.ndarray, raw_flux: np.ndarray, flat_flux: np.ndarray,
+) -> None:
+    """Summarize this sector's light curve (rotation/variability/flares/dipper)
+    and write it to outdir. Uses the SAME already-downloaded flux — no refetch."""
+    from .summary import StellarSummary, summarize
+
+    res = summarize(time, raw_flux, flat_flux)
+    rec = StellarSummary(
+        tic=int(tic), sector=int(sector), cadence_s=int(cadence_s),
+        n_epochs=int(np.isfinite(raw_flux).sum()),
+        var_amplitude_ppt=res.var_amplitude_ppt,
+        rotation_period_d=res.rotation_period_d, rotation_power=res.rotation_power,
+        rotation_systematic=res.rotation_systematic, n_flares=res.n_flares,
+        is_dipper=res.is_dipper, n_dips=res.n_dips, var_class=res.var_class,
+    )
+    os.makedirs(outdir, exist_ok=True)
+    with open(os.path.join(outdir, f"tic{tic}_s{sector}.json"), "w", encoding="utf-8") as fh:
+        fh.write(rec.to_json(indent=2))
+
+
 def _save_plot(outdir: str, rec: FindRecord, time: np.ndarray, flux: np.ndarray) -> str:
     os.makedirs(outdir, exist_ok=True)
     fig, ax = plt.subplots(figsize=(10, 4))
@@ -151,12 +173,16 @@ def run_target(
     make_plots: bool = True,
     sectors: list[int] | None = None,
     source: str = "spoc",
+    summaries_dir: str | None = None,
 ) -> list[FindRecord]:
     """Search deduped sectors of one TIC; return validated candidate records.
 
     sectors: restrict to these sector numbers (None = all available).
     source: "spoc" (pre-made 2-min/QLP light curves) or "ffi" (extract from the
     Full-Frame Images via TESScut — reaches stars with no pre-made light curve).
+    summaries_dir: if set, also write a StellarSummary (rotation / variability /
+    flare / dipper) per sector there — a catalog product from the SAME download,
+    at ~a few percent CPU overhead on the download-bound sweep.
     """
     detector = detector or BoxMatchedFilter()
     wanted = set(sectors) if sectors is not None else None
@@ -189,6 +215,8 @@ def run_target(
         cadence_s = int(row["cadence_s"]) or cadence_seconds(time)
         all_times.append(time)
         flat, _ = flatten(time, flux, window_length=window_length)
+        if summaries_dir is not None:
+            _write_summary(summaries_dir, tic, int(row["sector"]), cadence_s, time, flux, flat)
         for cand in detector.search(time, flat):
             pending.append({
                 "sector": int(row["sector"]), "cadence_s": cadence_s,
