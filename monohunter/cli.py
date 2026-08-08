@@ -88,6 +88,19 @@ def main(argv: list[str] | None = None) -> int:
         help="photometric band (default r for ztf, g for asassn; ZTF g/r/i, ASAS-SN g/V)",
     )
 
+    sm = sub.add_parser(
+        "summarize",
+        help="per-star stellar summary from the same download: rotation, variability, "
+        "flares, dipper (a catalog product, not just transit yes/no)",
+    )
+    sm.add_argument("--tic", type=int, required=True, help="TESS Input Catalog id")
+    sm.add_argument("--sectors", type=int, nargs="+", default=None, help="restrict to sectors")
+    sm.add_argument("--outdir", default="summaries", help="where to write summary JSON")
+
+    ct = sub.add_parser("catalog", help="aggregate stellar summaries into one CSV catalog")
+    ct.add_argument("--summaries", default="summaries", help="dir of summary JSONs")
+    ct.add_argument("--out", default="catalog.csv", help="output CSV path")
+
     tt = sub.add_parser("triage-train", help="train the ML triage model from labels + sweep CSVs")
     tt.add_argument("--labels", default="labels/seed_labels.csv", help="tic,label CSV (1=interesting)")
     tt.add_argument("--sweeps", default="sweeps", help="dir of sweep CSVs (feature source)")
@@ -245,6 +258,52 @@ def main(argv: list[str] | None = None) -> int:
             for fl in flares:
                 print(f"    flare @ {fl.t_peak_btjd:.2f} BTJD  "
                       f"+{fl.amplitude_ppt:.1f}ppt  {fl.duration_hr:.1f}h  ({fl.n_points} pts)")
+        return 0
+
+    if args.cmd == "summarize":
+        from .summary import run_summary
+
+        summaries = run_summary(args.tic, sectors=args.sectors)
+        if not summaries:
+            print(f"No light curves for TIC {args.tic}.")
+            return 0
+        os.makedirs(args.outdir, exist_ok=True)
+        for s in summaries:
+            path = os.path.join(args.outdir, f"tic{s.tic}_s{s.sector}.json")
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(s.to_json(indent=2))
+            rot = f"{s.rotation_period_d:.2f}d (power {s.rotation_power:.2f})" if s.rotation_period_d else (
+                "systematic" if s.rotation_systematic else "none")
+            print(
+                f"S{s.sector}: {s.var_class} | amp {s.var_amplitude_ppt:.1f}ppt | "
+                f"rotation {rot} | {s.n_flares} flare(s) | dipper={s.is_dipper} -> {path}"
+            )
+        return 0
+
+    if args.cmd == "catalog":
+        import csv as _csv
+        import json as _json
+
+        from .summary import StellarSummary
+
+        rows = []
+        for jpath in sorted(Path(args.summaries).glob("*.json")):
+            try:
+                rows.append(StellarSummary(**_json.loads(jpath.read_text(encoding="utf-8"))))
+            except Exception:
+                continue
+        if not rows:
+            print(f"No summaries found in {args.summaries}.")
+            return 0
+        cols = list(StellarSummary.model_fields.keys())
+        with open(args.out, "w", newline="", encoding="utf-8") as fh:
+            w = _csv.DictWriter(fh, fieldnames=cols)
+            w.writeheader()
+            for s in rows:
+                w.writerow(s.model_dump())
+        import collections as _c
+        by_class = _c.Counter(s.var_class for s in rows)
+        print(f"{len(rows)} stars -> {args.out}  ({dict(by_class)})")
         return 0
 
     if args.cmd == "triage-train":
