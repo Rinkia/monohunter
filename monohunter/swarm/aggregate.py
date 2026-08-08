@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .. import __version__
 from ..record import FindRecord
 
 
@@ -152,7 +153,9 @@ def render_html(candidates: list[AggregatedCandidate]) -> str:
             "</tr>"
         )
     body = "\n".join(rows) or '<tr><td colspan="9">No candidates yet.</td></tr>'
-    return _HTML_TEMPLATE.format(generated=generated, count=len(candidates), rows=body)
+    return _HTML_TEMPLATE.format(
+        generated=generated, count=len(candidates), rows=body, version=__version__
+    )
 
 
 _HTML_TEMPLATE = """<!doctype html>
@@ -172,10 +175,19 @@ _HTML_TEMPLATE = """<!doctype html>
   .known {{ background: #eee; color: #555; padding: .1rem .4rem; border-radius: 3px; font-size: 12px; }}
   .eb {{ background: #b8860b; color: #fff; padding: .1rem .4rem; border-radius: 3px; font-size: 12px; }}
   a {{ color: #0a5; }}
+  .release {{ background: #0a7d2c; color: #fff; padding: .6rem .9rem; border-radius: 6px;
+    margin-bottom: 1.2rem; font-size: 14px; }}
+  .release a {{ color: #fff; text-decoration: underline; }}
+  .release code {{ background: rgba(255,255,255,.2); padding: .05rem .3rem; border-radius: 3px; }}
 </style>
 </head>
 <body>
 <h1>monohunter — community candidates</h1>
+<div class="release">🚀 <b>monohunter {version} released</b> —
+<code>pip install monohunter</code>. New: FFI reach, ground-survey confirmation
+(ZTF/ASAS-SN), multi-sector ephemeris, anomaly detection, crowd vetting + ML
+triage. <a href="https://github.com/Rinkia/monohunter/blob/main/CHANGELOG.md">changelog</a>
+· <a href="https://pypi.org/project/monohunter/">PyPI</a></div>
 <p class="meta">{count} candidates · generated {generated} ·
 <a href="https://github.com/Rinkia/monohunter">contribute</a></p>
 <table>
