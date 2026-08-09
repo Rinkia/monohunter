@@ -15,9 +15,16 @@ use these come from lightkurve's search table; in tests they're plain dicts.
 from __future__ import annotations
 
 import re
+import socket
 from typing import Any, Callable, Iterable, Iterator, Mapping, TypeVar
 
 import numpy as np
+
+# A hung MAST/IRSA read (no data, connection stuck) would block a sweep worker
+# thread forever with no timeout — one stall wedges the whole parallel sweep.
+# Cap every socket read so a stuck download raises (ReadTimeout/socket.timeout,
+# both OSError) instead, and gets skipped like any other failed download.
+socket.setdefaulttimeout(180)
 
 Row = Mapping[str, object]
 LC = TypeVar("LC")
