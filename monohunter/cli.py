@@ -106,6 +106,11 @@ def main(argv: list[str] | None = None) -> int:
     ct.add_argument("--summaries", default="summaries", help="dir of summary JSONs")
     ct.add_argument("--out", default="catalog.csv", help="output CSV path")
 
+    cp = sub.add_parser("catalog-page", help="render a catalog CSV into a static Pages HTML view")
+    cp.add_argument("--csv", required=True, help="catalog CSV (from `catalog`)")
+    cp.add_argument("--sector", type=int, required=True, help="sector number (for the title)")
+    cp.add_argument("--out", default="_site/catalog.html", help="output HTML path")
+
     tt = sub.add_parser("triage-train", help="train the ML triage model from labels + sweep CSVs")
     tt.add_argument("--labels", default="labels/seed_labels.csv", help="tic,label CSV (1=interesting)")
     tt.add_argument("--sweeps", default="sweeps", help="dir of sweep CSVs (feature source)")
@@ -315,6 +320,20 @@ def main(argv: list[str] | None = None) -> int:
         import collections as _c
         by_class = _c.Counter(s.var_class for s in rows)
         print(f"{len(rows)} stars -> {args.out}  ({dict(by_class)})")
+        return 0
+
+    if args.cmd == "catalog-page":
+        import shutil
+
+        from .catalog_page import load_catalog, render_catalog_html
+
+        rows = load_catalog(args.csv)
+        csv_name = os.path.basename(args.csv)
+        out = Path(args.out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(render_catalog_html(rows, args.sector, csv_name), encoding="utf-8")
+        shutil.copy(args.csv, out.parent / csv_name)   # ship the CSV next to the page for download
+        print(f"{len(rows)} stars -> {out} (+ {csv_name})")
         return 0
 
     if args.cmd == "triage-train":
