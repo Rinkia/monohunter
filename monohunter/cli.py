@@ -81,6 +81,14 @@ def main(argv: list[str] | None = None) -> int:
     fb.add_argument("--outdir", default="ffi_candidates", help="where to write JSON + PNG")
     fb.add_argument("--no-plot", action="store_true", help="skip PNG generation")
 
+    nv = sub.add_parser(
+        "novelty",
+        help="cross-match finds against the AAVSO Variable Star Index (VSX): known "
+        "variable, or genuinely new?",
+    )
+    nv.add_argument("--tic", type=int, default=None, help="single target")
+    nv.add_argument("--candidates", default=None, help="dir of record JSONs to batch-check")
+
     gr = sub.add_parser(
         "ground",
         help="cross-check a candidate against ground-survey photometry (ZTF): is "
@@ -92,6 +100,19 @@ def main(argv: list[str] | None = None) -> int:
         "--band", default=None,
         help="photometric band (default r for ztf, g for asassn; ZTF g/r/i, ASAS-SN g/V)",
     )
+
+    comp = sub.add_parser(
+        "completeness",
+        help="survey sensitivity via injection-recovery: inject synthetic transits "
+        "into a real light curve and measure the recovered fraction (use a QUIET star)",
+    )
+    comp.add_argument("--tic", type=int, default=None, help="single quiet star to inject into")
+    comp.add_argument("--sector", type=int, required=True, help="sector")
+    comp.add_argument("--n", type=int, default=20, help="injections per grid cell")
+    comp.add_argument("--sample", type=int, default=None, metavar="M",
+                      help="SURVEY mode: average over M stars stratified across the catalog's "
+                      "noise range (needs --catalog)")
+    comp.add_argument("--catalog", default=None, help="catalog CSV to draw the --sample from")
 
     sm = sub.add_parser(
         "summarize",
@@ -214,6 +235,38 @@ def main(argv: list[str] | None = None) -> int:
                 print("    period unconstrained (no reliable stellar density)")
         return 0
 
+    if args.cmd == "novelty":
+        from .novelty import check_novelty
+
+        def _fmt(m):
+            if m is None:
+                return "not in VSX (novel)"
+            p = f", P={m['period']:.3f}d" if m.get("period") else ""
+            return f"KNOWN: VSX {m['name']} ({m['type']}{p}, {m['sep_arcsec']:.1f}\")"
+
+        if args.candidates:
+            import json as _json
+
+            tics = []
+            for jpath in sorted(Path(args.candidates).glob("*.json")):
+                try:
+                    tics.append(int(_json.loads(jpath.read_text(encoding="utf-8"))["tic"]))
+                except Exception:
+                    continue
+            novel = 0
+            for tic in sorted(set(tics)):
+                m = check_novelty(tic)
+                novel += m is None
+                print(f"TIC {tic}: {_fmt(m)}")
+            print(f"\n{novel}/{len(set(tics))} not in VSX (candidate discoveries).")
+            return 0
+
+        if args.tic is None:
+            print("Give --tic <id> or --candidates <dir>.")
+            return 1
+        print(f"TIC {args.tic}: {_fmt(check_novelty(args.tic))}")
+        return 0
+
     if args.cmd == "ground":
         from .ground import run_ground_check
 
@@ -274,6 +327,62 @@ def main(argv: list[str] | None = None) -> int:
             for fl in flares:
                 print(f"    flare @ {fl.t_peak_btjd:.2f} BTJD  "
                       f"+{fl.amplitude_ppt:.1f}ppt  {fl.duration_hr:.1f}h  ({fl.n_points} pts)")
+        return 0
+
+    if args.cmd == "completeness":
+        import csv as _csv
+
+        from .completeness import (
+            DEFAULT_DEPTHS_PPT,
+            DEFAULT_DURATIONS_HR,
+            completeness_depth,
+            run_completeness,
+            run_completeness_sample,
+        )
+
+        if args.sample:
+            if not args.catalog:
+                print("--sample needs --catalog (a catalog CSV to draw stars from).")
+                return 1
+            # stratify across the noise range so the sample represents the survey
+            stars = [r for r in _csv.DictReader(open(args.catalog))
+                     if r.get("var_class") == "quiet" and int(r.get("n_epochs", 0)) > 15000]
+            stars.sort(key=lambda r: float(r["var_amplitude_ppt"]))
+            if len(stars) < args.sample:
+                print(f"Only {len(stars)} usable quiet stars in the catalog.")
+                return 1
+            step = len(stars) / args.sample
+            tics = [int(stars[int(i * step)]["tic"]) for i in range(args.sample)]
+            grid, n_used = run_completeness_sample(tics, args.sector, n=args.n)
+            if grid is None:
+                print("No usable stars (all had their own signal or failed to fetch).")
+                return 0
+            print(f"SURVEY injection-recovery: mean over {n_used} stars, S{args.sector}, "
+                  f"{args.n} injections/cell. Recovered fraction:")
+        else:
+            if args.tic is None:
+                print("Give --tic <quiet star>, or --sample M --catalog CSV for survey mode.")
+                return 1
+            grid, n_epochs, base_clean = run_completeness(args.tic, args.sector, n=args.n)
+            if grid is None:
+                print(f"No sector {args.sector} light curve for TIC {args.tic}.")
+                return 0
+            if not base_clean:
+                print("WARNING: base star has its own detected signal — pick a quiet star "
+                      "(low var_amplitude, no transit) or the grid will read low.")
+            print(f"Injection-recovery on TIC {args.tic} S{args.sector} ({n_epochs} epochs), "
+                  f"{args.n} injections/cell. Recovered fraction:")
+        header = "depth\\dur | " + " ".join(f"{d:>5.0f}h" for d in DEFAULT_DURATIONS_HR)
+        print(header)
+        for depth in DEFAULT_DEPTHS_PPT:
+            cells = " ".join(f"{grid[(depth, dur)]*100:>5.0f}%" for dur in DEFAULT_DURATIONS_HR)
+            print(f"{depth:>6.1f}ppt | {cells}")
+        for dur in DEFAULT_DURATIONS_HR:
+            d50 = completeness_depth(grid, dur, 0.5)
+            d90 = completeness_depth(grid, dur, 0.9)
+            print(f"  {dur:.0f}h transit: 50% complete at "
+                  f"{f'{d50:.1f}ppt' if d50 else '>10ppt'}, "
+                  f"90% at {f'{d90:.1f}ppt' if d90 else '>10ppt'}")
         return 0
 
     if args.cmd == "summarize":
