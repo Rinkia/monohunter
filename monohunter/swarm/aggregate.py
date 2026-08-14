@@ -184,9 +184,10 @@ _HTML_TEMPLATE = """<!doctype html>
 <body>
 <h1>monohunter — community candidates</h1>
 <div class="release">🚀 <b>monohunter {version} released</b> —
-<code>pip install monohunter</code>. New: FFI reach, ground-survey confirmation
-(ZTF/ASAS-SN), multi-sector ephemeris, anomaly detection, crowd vetting + ML
-triage. <a href="https://github.com/Rinkia/monohunter/blob/main/CHANGELOG.md">changelog</a>
+<code>pip install monohunter</code>. New: eclipsing-binary orbital periods from
+in-sector eclipses, rotation-period distribution plots, and pulsator/rotator/
+eclipsing sub-classification via periodogram harmonics.
+<a href="https://github.com/Rinkia/monohunter/blob/main/CHANGELOG.md">changelog</a>
 · <a href="https://pypi.org/project/monohunter/">PyPI</a></div>
 <p class="meta">{count} candidates · generated {generated} ·
 <a href="catalog.html">Sector 15 variability catalog</a> ·
