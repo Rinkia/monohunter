@@ -66,7 +66,7 @@ Each candidate is one JSON file:
   "duration_hr": 23.8,
   "ingress_hr": 2.29,
   "snr": 39.4,
-  "tool_version": "0.2.0",
+  "tool_version": "0.3.0",
   "known_toi_match": true,
   "known_toi_id": "TOI-2180.01",
   "likely_eb": false,
@@ -207,6 +207,41 @@ star / eclipsing binary? Confirm against ZTF or ASAS-SN:
 
 ```bash
 monohunter ground --tic 198382838 --survey ztf     # or --survey asassn
+```
+
+**Eclipsing-binary periods** — an EB with two or more eclipses in one sector has a
+recoverable orbital period. `eb` finds the eclipse times, splits primary from
+secondary by depth, and fits the period from the **primary** times (their spacing
+is exactly one orbit):
+
+```bash
+monohunter eb --tic 271763138 --sectors 15
+# S15: 2 eclipses (1 primary) (primary+secondary) -> period needs >=2 same-type eclipses
+```
+
+A lone primary+secondary pair is left unrecoverable on purpose — on an eccentric
+orbit the secondary sits at an unknown phase, so the primary-secondary gap is not
+a period fraction. The tool never reports a confident wrong period.
+
+**Rotation / variability catalog** — the same download that feeds the transit scan
+also yields a per-star rotation period, variability amplitude, flare count, and a
+sub-class. `summarize` writes one JSON per star; `catalog` aggregates them:
+
+```bash
+monohunter summarize --tic 100010286              # rotation/variability/flares/dipper + subclass
+monohunter catalog --summaries summaries --out catalog.csv
+```
+
+The `subclass` field splits variables into **eclipsing** (≥2 eclipse-shaped dips),
+**pulsator** (near-pure sinusoid, low 2nd-harmonic content), and **rotator**
+(non-sinusoidal spot modulation) via periodogram harmonics.
+
+**Rotation-period distribution** — a population science figure straight from a
+catalog CSV: the period distribution and the period–amplitude relation over every
+rotator in the sweep:
+
+```bash
+monohunter rotation-plot --csv catalogs/sector15.csv --sector 15 --out rotation.png
 ```
 
 **Faster sweeps** — `watch` (and the sweep scripts) take `--workers N` for
