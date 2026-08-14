@@ -52,6 +52,29 @@ def test_classify_priority():
     assert _classify(period=None, amp_ppt=1.0, n_flares=0, is_dipper=False) == "quiet"
 
 
+def test_load_summaries_and_write_catalog(tmp_path):
+    import csv
+
+    from monohunter.summary import StellarSummary, load_summaries, write_catalog_csv
+
+    # two summary JSONs on disk (as the sweep writes them)
+    for tic, cls in [(1, "rotator"), (2, "quiet")]:
+        s = StellarSummary(tic=tic, sector=15, cadence_s=120, n_epochs=17000,
+                           var_amplitude_ppt=9.0, var_class=cls)
+        (tmp_path / f"tic{tic}_s15.json").write_text(s.to_json(), encoding="utf-8")
+    (tmp_path / "junk.json").write_text("not json", encoding="utf-8")  # skipped, not fatal
+
+    rows = load_summaries(str(tmp_path))
+    assert len(rows) == 2                                  # bad file dropped
+    assert {r["tic"] for r in rows} == {1, 2}
+
+    out = tmp_path / "catalog.csv"
+    write_catalog_csv(rows, str(out))
+    got = list(csv.DictReader(open(out)))
+    assert len(got) == 2
+    assert set(got[0].keys()) == set(StellarSummary.model_fields.keys())  # canonical columns
+
+
 def test_summarize_rotator():
     t = _time()
     rng = np.random.default_rng(3)

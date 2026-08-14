@@ -153,6 +153,44 @@ class StellarSummary(BaseModel):
         return self.model_dump_json(**kwargs)
 
 
+def load_summaries(summaries_dir: str, workers: int = 16) -> list[dict]:
+    """Read every summary JSON in a dir as a plain dict, in parallel.
+
+    Building a catalog means opening thousands of tiny files; that's I/O-bound
+    (cold-disk per-file open dominates, ~45 ms/file on Windows), so parallel reads
+    overlap the latency. No pydantic — these are trusted, self-written records, so
+    validating each on the way to a CSV is wasted work.
+    """
+    import glob
+    import json as _json
+    from concurrent.futures import ThreadPoolExecutor
+    from pathlib import Path
+
+    files = sorted(glob.glob(str(Path(summaries_dir) / "*.json")))
+
+    def _one(path: str) -> dict | None:
+        try:
+            with open(path, encoding="utf-8") as fh:
+                return _json.load(fh)
+        except Exception:
+            return None
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        return [r for r in pool.map(_one, files) if r is not None]
+
+
+def write_catalog_csv(rows: list[dict], out_path: str) -> int:
+    """Write summary dicts to a CSV with the canonical StellarSummary columns."""
+    import csv as _csv
+
+    cols = list(StellarSummary.model_fields.keys())
+    with open(out_path, "w", newline="", encoding="utf-8") as fh:
+        w = _csv.DictWriter(fh, fieldnames=cols, extrasaction="ignore")
+        w.writeheader()
+        w.writerows(rows)
+    return len(rows)
+
+
 def run_summary(tic: int, sectors: list[int] | None = None, window_length: float | None = None):
     """Fetch + summarize each sector of a TIC. Returns list[StellarSummary].
     Network — mirrors pipeline.run_target's fetch loop."""

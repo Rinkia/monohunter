@@ -297,28 +297,16 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "catalog":
-        import csv as _csv
-        import json as _json
+        import collections as _c
 
-        from .summary import StellarSummary
+        from .summary import load_summaries, write_catalog_csv
 
-        rows = []
-        for jpath in sorted(Path(args.summaries).glob("*.json")):
-            try:
-                rows.append(StellarSummary(**_json.loads(jpath.read_text(encoding="utf-8"))))
-            except Exception:
-                continue
+        rows = load_summaries(args.summaries)
         if not rows:
             print(f"No summaries found in {args.summaries}.")
             return 0
-        cols = list(StellarSummary.model_fields.keys())
-        with open(args.out, "w", newline="", encoding="utf-8") as fh:
-            w = _csv.DictWriter(fh, fieldnames=cols)
-            w.writeheader()
-            for s in rows:
-                w.writerow(s.model_dump())
-        import collections as _c
-        by_class = _c.Counter(s.var_class for s in rows)
+        write_catalog_csv(rows, args.out)
+        by_class = _c.Counter(r.get("var_class", "quiet") for r in rows)
         print(f"{len(rows)} stars -> {args.out}  ({dict(by_class)})")
         return 0
 
