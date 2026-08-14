@@ -85,3 +85,37 @@ def test_summarize_rotator():
     assert res.var_class == "rotator"
     assert res.rotation_period_d is not None
     assert res.var_amplitude_ppt > 5.0     # 2% sine is clearly variable
+
+
+def test_harmonic_ratio_pure_sine_is_small():
+    from monohunter.summary import harmonic_ratio
+
+    t = _time()
+    flux = 1.0 + 0.02 * np.sin(2 * np.pi * t / 6.0)
+    assert harmonic_ratio(t, flux, 6.0) < 0.1
+
+
+def test_subclass_pulsator_vs_rotator():
+    from monohunter.summary import _subclass
+
+    t = _time()
+    rng = np.random.default_rng(7)
+    flat = 1.0 + rng.normal(0, 5e-4, t.size)     # no eclipses
+    # pure long-period sinusoid -> pulsator
+    puls = 1.0 + 0.02 * np.sin(2 * np.pi * t / 8.0) + rng.normal(0, 5e-4, t.size)
+    assert _subclass("rotator", 8.0, t, puls, flat) == "pulsator"
+    # sine + strong 2nd harmonic (spot-shaped) -> rotator
+    spot = (1.0 + 0.02 * np.sin(2 * np.pi * t / 8.0)
+            + 0.012 * np.sin(4 * np.pi * t / 8.0 + 0.7) + rng.normal(0, 5e-4, t.size))
+    assert _subclass("rotator", 8.0, t, spot, flat) == "rotator"
+
+
+def test_subclass_eclipsing_wins():
+    from monohunter.summary import _subclass
+
+    t = _time()
+    flat = 1.0 + np.random.default_rng(8).normal(0, 5e-4, t.size)
+    for tc in (5.0, 12.0):
+        flat[np.abs(t - tc) < 0.05] -= 0.1       # two eclipses in the flattened curve
+    raw = 1.0 + 0.02 * np.sin(2 * np.pi * t / 8.0)
+    assert _subclass("rotator", 8.0, t, raw, flat) == "eclipsing"

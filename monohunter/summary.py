@@ -27,7 +27,7 @@ from pydantic import BaseModel, ConfigDict
 
 from . import __version__
 
-SUMMARY_SCHEMA_VERSION = 1
+SUMMARY_SCHEMA_VERSION = 2  # v2: subclass (pulsator/rotator/eclipsing refinement)
 
 # Rotation search window and the LS power a peak must clear to be called real.
 ROT_MIN_PERIOD_D = 0.1
@@ -41,6 +41,15 @@ SYSTEMATIC_TOL_FRAC = 0.05
 # Classification thresholds.
 FLARE_CLASS_MIN = 3
 VARIABLE_AMPLITUDE_PPT = 5.0   # >0.5% robust amplitude -> "variable"
+# Subclass refinement (periodogram harmonics + eclipse shape). A pure sinusoid
+# (pulsator) has almost no 2nd harmonic; a spot-modulated rotator's non-sinusoidal
+# shape raises A2/A1; a >=2-eclipse curve is eclipsing. Above this A2/A1 ratio the
+# light curve is too non-sinusoidal to be a coherent pulsator -> rotator.
+PULSATOR_HARMONIC_MAX = 0.25
+# Short periods that are almost pure sinusoids are pulsators (delta Scuti / gamma
+# Dor regime) even if slightly above the harmonic cutoff; spot rotation rarely
+# sits this fast this cleanly.
+PULSATOR_MAX_PERIOD_D = 2.0
 
 
 def rotation_period(time, raw_flux):
@@ -83,6 +92,48 @@ def rotation_period(time, raw_flux):
     return period, peak, False
 
 
+def harmonic_ratio(time, flux, period) -> float:
+    """A2/A1: amplitude of the 2nd harmonic over the fundamental at `period`.
+
+    Least-squares fit of {1, sin f, cos f, sin 2f, cos 2f} (f = 2π/period). A pure
+    sinusoid (pulsation) has A2≈0; a non-sinusoidal spot / eclipse shape lifts A2.
+    Returns 0.0 when the fit is degenerate. Pure.
+    """
+    t = np.asarray(time, dtype=float)
+    f = np.asarray(flux, dtype=float)
+    good = np.isfinite(t) & np.isfinite(f)
+    t, f = t[good], f[good]
+    if t.size < 20 or not (period and period > 0):
+        return 0.0
+    w = 2 * np.pi / period
+    design = np.vstack([
+        np.ones(t.size), np.sin(w * t), np.cos(w * t), np.sin(2 * w * t), np.cos(2 * w * t)
+    ]).T
+    coef, *_ = np.linalg.lstsq(design, f, rcond=None)
+    a1 = float(np.hypot(coef[1], coef[2]))
+    a2 = float(np.hypot(coef[3], coef[4]))
+    return a2 / a1 if a1 > 0 else 0.0
+
+
+def _subclass(base_class, period, time, raw_flux, flat_flux) -> str:
+    """Refine a variable star: eclipsing / pulsator / rotator. Pure.
+
+    Eclipses (>=2 deep dips) win outright. Otherwise a periodic star splits by
+    sinusoid purity: near-pure sine -> pulsator, non-sinusoidal -> rotator.
+    Non-periodic classes (quiet/flaring/dipper/variable) are returned unchanged.
+    """
+    from .eb import eclipse_times
+
+    if len(eclipse_times(time, flat_flux)) >= 2:
+        return "eclipsing"
+    if base_class != "rotator" or period is None:
+        return base_class
+    r = harmonic_ratio(time, raw_flux, period)
+    if r < PULSATOR_HARMONIC_MAX or period < PULSATOR_MAX_PERIOD_D:
+        return "pulsator"
+    return "rotator"
+
+
 @dataclass(frozen=True)
 class SummaryResult:
     var_amplitude_ppt: float
@@ -93,6 +144,7 @@ class SummaryResult:
     is_dipper: bool
     n_dips: int
     var_class: str            # quiet | rotator | variable | flaring | dipper
+    subclass: str = "quiet"   # eclipsing | pulsator | rotator | (echoes var_class otherwise)
 
 
 def _classify(period, amp_ppt, n_flares, is_dipper) -> str:
@@ -117,6 +169,7 @@ def summarize(time, raw_flux, flat_flux) -> SummaryResult:
     period, power, systematic = rotation_period(time, raw_flux)
     n_flares = len(find_flares(time, flat_flux))
     dip = find_dippers(time, flat_flux)
+    var_class = _classify(period, amp_ppt, n_flares, dip.is_dipper)
     return SummaryResult(
         var_amplitude_ppt=float(amp_ppt),
         rotation_period_d=period,
@@ -125,7 +178,8 @@ def summarize(time, raw_flux, flat_flux) -> SummaryResult:
         n_flares=int(n_flares),
         is_dipper=bool(dip.is_dipper),
         n_dips=int(dip.n_dips),
-        var_class=_classify(period, amp_ppt, n_flares, dip.is_dipper),
+        var_class=var_class,
+        subclass=_subclass(var_class, period, time, raw_flux, flat_flux),
     )
 
 
@@ -147,6 +201,7 @@ class StellarSummary(BaseModel):
     is_dipper: bool = False
     n_dips: int = 0
     var_class: str = "quiet"
+    subclass: str = "quiet"
     tool_version: str = __version__
 
     def to_json(self, **kwargs) -> str:
@@ -220,5 +275,6 @@ def run_summary(tic: int, sectors: list[int] | None = None, window_length: float
             rotation_period_d=res.rotation_period_d, rotation_power=res.rotation_power,
             rotation_systematic=res.rotation_systematic, n_flares=res.n_flares,
             is_dipper=res.is_dipper, n_dips=res.n_dips, var_class=res.var_class,
+            subclass=res.subclass,
         ))
     return out

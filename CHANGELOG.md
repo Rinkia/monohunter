@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.3.0
+
+More population science from the same downloads: orbital periods for eclipsing
+binaries, a rotation-distribution figure, and a refined variable sub-classification.
+
+### Eclipsing binaries
+- **`eb` command + `monohunter.eb`:** recover an EB orbital period from in-sector
+  eclipses. Finds eclipse times (deep contiguous dips in the flattened flux),
+  splits primary/secondary by depth, and reuses `ephemeris.period_from_transits`
+  on the PRIMARY times only — their spacing is exactly one orbit. A lone
+  primary+secondary pair is left unrecoverable (an eccentric secondary sits at an
+  unknown phase, so the gap is not a period fraction): never a confident wrong
+  period. Verified against TIC 271763138 (VSX P=44.8d eccentric EA).
+
+### Rotation
+- **`rotation-plot` command + `monohunter.rotation_plot`:** a population figure from
+  a catalog CSV — rotation-period distribution (log histogram) + period-amplitude
+  relation. Filters to real rotators (finite period, non-systematic).
+
+### Variable classification
+- **Sub-classification (`subclass`, summary schema v2):** splits variables into
+  `eclipsing` (>=2 eclipse-shaped dips), `pulsator` (near-pure sinusoid, low 2nd-
+  harmonic content), and `rotator` (non-sinusoidal spot modulation) via periodogram
+  harmonics. Additive optional column; old catalogs still load.
+
 ## 0.2.0
 
 The data-frontier + confirmation + triage release. Grows monohunter from a

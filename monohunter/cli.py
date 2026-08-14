@@ -132,6 +132,24 @@ def main(argv: list[str] | None = None) -> int:
     cp.add_argument("--sector", type=int, required=True, help="sector number (for the title)")
     cp.add_argument("--out", default="_site/catalog.html", help="output HTML path")
 
+    rp = sub.add_parser(
+        "rotation-plot",
+        help="population figure from a catalog CSV: rotation-period distribution + "
+        "period-amplitude relation (a science plot from the sweep's rotators)",
+    )
+    rp.add_argument("--csv", required=True, help="catalog CSV (from `catalog`)")
+    rp.add_argument("--sector", type=int, default=None, help="sector number (for the title)")
+    rp.add_argument("--out", default="_site/rotation.png", help="output PNG path")
+
+    eb = sub.add_parser(
+        "eb",
+        help="recover an eclipsing-binary orbital period from its in-sector eclipses "
+        "(reuses the multi-transit period fit on eclipse times)",
+    )
+    eb.add_argument("--tic", type=int, required=True, help="TESS Input Catalog id")
+    eb.add_argument("--window", type=float, default=3.0, help="detrend window in days")
+    eb.add_argument("--sectors", type=int, nargs="+", default=None, help="restrict to sectors")
+
     tt = sub.add_parser("triage-train", help="train the ML triage model from labels + sweep CSVs")
     tt.add_argument("--labels", default="labels/seed_labels.csv", help="tic,label CSV (1=interesting)")
     tt.add_argument("--sweeps", default="sweeps", help="dir of sweep CSVs (feature source)")
@@ -431,6 +449,42 @@ def main(argv: list[str] | None = None) -> int:
         out.write_text(render_catalog_html(rows, args.sector, csv_name), encoding="utf-8")
         shutil.copy(args.csv, out.parent / csv_name)   # ship the CSV next to the page for download
         print(f"{len(rows)} stars -> {out} (+ {csv_name})")
+        return 0
+
+    if args.cmd == "rotation-plot":
+        import csv as _csv
+
+        from .rotation_plot import plot_rotation_distribution
+
+        rows = list(_csv.DictReader(open(args.csv, encoding="utf-8")))
+        out = Path(args.out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        n = plot_rotation_distribution(rows, str(out), sector=args.sector)
+        print(f"{n} rotators from {len(rows)} stars -> {out}")
+        return 0
+
+    if args.cmd == "eb":
+        from .eb import run_eb
+
+        results = run_eb(args.tic, sectors=args.sectors, window_length=args.window)
+        if not results:
+            print(f"No light curves for TIC {args.tic}.")
+            return 0
+        for sector, res in results:
+            if res is None:
+                print(f"S{sector}: no eclipse detected")
+                continue
+            sec = " (primary+secondary)" if res.secondary_detected else " (primaries only)"
+            if res.orbital_period_d is not None:
+                print(
+                    f"S{sector}: {res.n_eclipses} eclipses ({res.n_primary} primary){sec} "
+                    f"-> orbital P = {res.orbital_period_d:.3f}d"
+                )
+            else:
+                print(
+                    f"S{sector}: {res.n_eclipses} eclipses ({res.n_primary} primary){sec} "
+                    f"-> period needs >=2 same-type eclipses (unrecoverable from this sector)"
+                )
         return 0
 
     if args.cmd == "triage-train":
