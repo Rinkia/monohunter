@@ -1,0 +1,22 @@
+# Keep the build context to source only — no data, caches, or history.
+.git/
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+tests/
+notebooks/
+_site/
+_vet/
+sweeps/
+candidates*/
+summaries*/
+watch_*/
+vet_*/
+ffi_*/
+testsum/
+catalog*.csv
+*.pkl
+data/
+Docker_guide/
+*.ipynb

@@ -20,3 +20,6 @@ sweeps/
 sweep_out/
 sweep_vet*/
 triage_model.pkl
+
+# internal Docker guide (not for the public repo)
+Docker_guide/

@@ -29,6 +29,17 @@ pip install monohunter
 Python 3.10+. Pulls in lightkurve, wotan, astroquery, scipy, matplotlib. The
 ASAS-SN ground cross-check needs one extra: `pip install monohunter[ground]`.
 
+### Or run it with Docker (no Python setup)
+
+```bash
+docker run --rm -v "$PWD/data:/data" ghcr.io/rinkia/monohunter \
+    run --tic 298663873 --sectors 19
+```
+
+Outputs land in `./data`. For a always-on fresh-data watcher (ideal on a homelab),
+`docker compose up -d` runs `monohunter watch` on the newest sector in a resumable,
+self-healing loop — see [`docker-compose.yml`](docker-compose.yml).
+
 ## Usage
 
 Search one target by its TESS Input Catalog (TIC) id:
