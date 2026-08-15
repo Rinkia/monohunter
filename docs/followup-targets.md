@@ -27,7 +27,9 @@ star showing one clean, flat-bottomed transit.
 | likely_eb | False (depth < 3%, not V-shaped) |
 | Known TOI | No |
 | VSX | **Not in VSX (uncatalogued)** |
-| Period | **Unconstrained** — TIC has no stellar density (Teff/rad/mass/ρ* all null) |
+| Period | **P ≈ 29 d** (18–59 d, 16–84%) — from a Gaia DR3 ρ\* (TIC had none) |
+| ρ\* | 0.35 g/cm³ (≈0.25 ρ⊙; from Gaia DR3 logg + radius) |
+| Next transit | **≈ 2026-08-29** (5–95% window; wide — the period range is broad) |
 | P_min | 14.0 d (a second transit would have shown within the sector baseline) |
 | n_sectors | 1 (single sector; not recurring) |
 
@@ -42,13 +44,14 @@ star showing one clean, flat-bottomed transit.
   period estimate) and RV is feasible.
 
 ### What's needed
-1. **Stellar characterization** (spectrum or Gaia): Teff, R\*, M\* → ρ\*. With ρ\*
-   the tool's own ephemeris estimator gives a period posterior + next-transit
-   window (currently blocked only by the missing ρ\*).
-2. **Second transit** to pin the period: P > 14 d (P_min). Check later TESS
-   sectors, or ground photometric monitoring once a period estimate exists.
-3. **Radial velocity** to measure the companion mass (planet vs brown dwarf vs
-   star).
+1. **Second transit to pin the period.** The Gaia-ρ\* estimate gives P ≈ 29 d
+   (18–59 d) and a next-transit window around **2026-08-29** — wide, so a few
+   nights of photometric monitoring bracketing that date could catch transit #2
+   and collapse the period. Later TESS sectors also help.
+2. **Radial velocity** to measure the companion mass (planet vs brown dwarf vs
+   star) — the star is bright (Tmag 9.5), so this is feasible.
+3. **Tighter stellar parameters** (a spectrum) would narrow ρ\*, hence the period
+   and the transit window.
 
 ### Provenance
 Found in the S17 discovery sweep (5000 SPOC targets, 2026-08). One of 30 novel

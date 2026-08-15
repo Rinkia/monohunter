@@ -1,5 +1,5 @@
 {
-  "schema_version": 6,
+  "schema_version": 7,
   "tic": 400048097,
   "sector": 17,
   "cadence_s": 120,
@@ -13,17 +13,23 @@
   "tool_version": "0.3.2",
   "known_toi_match": false,
   "known_toi_id": null,
-  "plot_path": "candidates_s17_vet\\tic400048097_s17.png",
+  "plot_path": null,
   "likely_eb": false,
-  "stellar_density_cgs": null,
-  "period_constrained": false,
+  "stellar_density_cgs": 0.35251135485263196,
+  "period_constrained": true,
   "p_min_d": 14.011110377826526,
-  "p_best_d": null,
-  "p_lo_d": null,
-  "p_hi_d": null,
-  "next_window_btjd": null,
+  "p_best_d": 29.185340590218797,
+  "p_lo_d": 18.065983213697912,
+  "p_hi_d": 59.27190095299448,
+  "next_window_btjd": [
+    4269.7191142869915,
+    4282.488372913139,
+    4332.781098963699
+  ],
   "n_sectors_observed": 1,
   "recurring_dip": false,
   "measured_period_d": null,
-  "n_transits_used": null
+  "n_transits_used": null,
+  "edge_gap_dist_d": 0.9651193741019597,
+  "baseline_scatter_ppt": 0.8621053898976986
 }
