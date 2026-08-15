@@ -175,3 +175,15 @@ def test_iter_streams_deduped_rows_one_at_a_time():
     assert downloaded == [(25, 120), (26, 120)]
     assert out[0][1] == "lc-25"
     assert out[1][1] == "lc-26"
+
+
+def test_rho_from_logg_radius_sun_and_guards():
+    from monohunter.fetch import rho_from_logg_radius
+    # Sun: logg 4.44, R=1 Rsun -> ~1.41 g/cm^3
+    rho = rho_from_logg_radius(4.44, 1.0)
+    assert abs(rho - 1.41) < 0.1
+    # a giant (low logg, big R) is much less dense than the Sun
+    assert rho_from_logg_radius(2.5, 10.0) < 0.01
+    # non-physical input -> None
+    assert rho_from_logg_radius(4.44, 0.0) is None
+    assert rho_from_logg_radius(None, 1.0) is None

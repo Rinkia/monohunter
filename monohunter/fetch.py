@@ -53,9 +53,62 @@ def _as_float(value: object) -> float | None:
         return None
 
 
+_G_CGS = 6.674e-8          # cm^3 / g / s^2
+_R_SUN_CM = 6.957e10
+# Gaia gspphot logg/radius carry real uncertainty; a generous fixed fractional
+# error keeps the derived rho* honest (the ephemeris marginalizes it and rejects
+# rho_err/rho > 1). Enough to constrain the period, not to over-trust it.
+_GAIA_RHO_ERR_FRAC = 0.4
+# Cone radius to match a TIC position to its Gaia source (arcsec -> deg).
+_GAIA_CONE_DEG = 10.0 / 3600.0
+
+
+def rho_from_logg_radius(logg: float, radius_rsun: float) -> float | None:
+    """Mean density (g/cm^3) from surface gravity and radius: rho = 3g/(4 pi G R).
+    Pure. Returns None on non-physical input. (Sun: logg 4.44, R=1 -> ~1.41.)"""
+    if radius_rsun is None or radius_rsun <= 0 or logg is None:
+        return None
+    g = 10.0 ** float(logg)
+    rho = 3.0 * g / (4.0 * 3.141592653589793 * _G_CGS * float(radius_rsun) * _R_SUN_CM)
+    return rho if rho > 0 else None
+
+
+def _gaia_rho_cgs(ra: float, dec: float) -> tuple[float | None, float | None]:
+    """Mean stellar density (cgs) from Gaia DR3 surface gravity + radius.
+
+    rho = 3g / (4 pi G R): needs only logg (-> g) and R, NO mass-radius assumption,
+    valid for dwarfs and giants alike (validated against the Sun: logg 4.44, R=1 ->
+    1.41 g/cm^3). Picks the brightest Gaia source in a small cone as the target.
+    Offline-safe: any failure or missing params -> (None, None)."""
+    try:
+        from astroquery.gaia import Gaia
+
+        job = Gaia.launch_job(
+            "SELECT TOP 1 ap.logg_gspphot, ap.radius_gspphot "
+            "FROM gaiadr3.gaia_source gs "
+            "JOIN gaiadr3.astrophysical_parameters ap ON gs.source_id = ap.source_id "
+            f"WHERE 1 = CONTAINS(POINT('ICRS', gs.ra, gs.dec), "
+            f"CIRCLE('ICRS', {float(ra)}, {float(dec)}, {_GAIA_CONE_DEG})) "
+            "AND ap.logg_gspphot IS NOT NULL AND ap.radius_gspphot IS NOT NULL "
+            "ORDER BY gs.phot_g_mean_mag ASC"
+        )
+        rows = job.get_results()
+        if not len(rows):
+            return (None, None)
+        rho_cgs = rho_from_logg_radius(
+            _as_float(rows["logg_gspphot"][0]), _as_float(rows["radius_gspphot"][0])
+        )
+        if rho_cgs is None:
+            return (None, None)
+        return (rho_cgs, _GAIA_RHO_ERR_FRAC * rho_cgs)
+    except Exception:
+        return (None, None)
+
+
 def get_stellar_density(tic: int) -> tuple[float | None, float | None]:
     """(rho_cgs, rho_err_cgs) for a TIC. Prefer TIC 'rho', else derive from
-    R*+M*, else (None, None). Cached; offline-safe (network failure -> None)."""
+    R*+M*, else fall back to Gaia DR3 (logg+radius), else (None, None). Cached;
+    offline-safe (network failure -> None)."""
     tic = int(tic)
     if tic in _RHO_CACHE:
         return _RHO_CACHE[tic]
@@ -77,6 +130,13 @@ def get_stellar_density(tic: int) -> tuple[float | None, float | None]:
                 rho_cgs = rho * _RHO_SUN_CGS
                 erho_cgs = erho * _RHO_SUN_CGS if erho else 0.3 * rho_cgs
                 result = (rho_cgs, erho_cgs)
+            else:
+                # TIC has no usable density: fall back to Gaia DR3 at this position.
+                # Bright, uncatalogued stars (the best mono-transit hosts) are
+                # exactly the ones TIC leaves blank but Gaia characterizes.
+                ra, dec = _as_float(row["ra"]), _as_float(row["dec"])
+                if ra is not None and dec is not None:
+                    result = _gaia_rho_cgs(ra, dec)
     except Exception:
         result = (None, None)
 
