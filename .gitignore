@@ -23,3 +23,6 @@ triage_model.pkl
 
 # internal Docker guide (not for the public repo)
 Docker_guide/
+
+# Docker runtime volume
+data/
