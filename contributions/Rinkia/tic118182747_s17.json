@@ -1,0 +1,33 @@
+{
+  "schema_version": 6,
+  "tic": 118182747,
+  "sector": 17,
+  "cadence_s": 120,
+  "event_time_btjd": 1780.1739418852894,
+  "depth_ppt": 164.3608431798882,
+  "duration_hr": 6.978170148414787,
+  "ingress_hr": 2.265368569395075,
+  "snr": 1593.0587799323396,
+  "detrend_method": "biweight",
+  "detrend_window_d": 3.0,
+  "tool_version": "0.3.2",
+  "known_toi_match": false,
+  "known_toi_id": null,
+  "plot_path": "candidates_s17_vet\\tic118182747_s17.png",
+  "likely_eb": true,
+  "stellar_density_cgs": 0.21441164799999998,
+  "period_constrained": true,
+  "p_min_d": 15.484348796790073,
+  "p_best_d": 23.231270955419873,
+  "p_lo_d": 17.277691408176903,
+  "p_hi_d": 45.40224037467007,
+  "next_window_btjd": [
+    4269.46770556108,
+    4281.267282177672,
+    4319.418979492149
+  ],
+  "n_sectors_observed": 1,
+  "recurring_dip": false,
+  "measured_period_d": null,
+  "n_transits_used": null
+}
