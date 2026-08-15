@@ -64,6 +64,7 @@ def _write_summary(
         rotation_period_d=res.rotation_period_d, rotation_power=res.rotation_power,
         rotation_systematic=res.rotation_systematic, n_flares=res.n_flares,
         is_dipper=res.is_dipper, n_dips=res.n_dips, var_class=res.var_class,
+        subclass=res.subclass,
     )
     os.makedirs(outdir, exist_ok=True)
     with open(os.path.join(outdir, f"tic{tic}_s{sector}.json"), "w", encoding="utf-8") as fh:

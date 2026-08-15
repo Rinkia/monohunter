@@ -220,3 +220,20 @@ def test_cli_run_wires_through(monkeypatch, tmp_path, capsys):
     out = capsys.readouterr().out
     assert "S25" in out
     assert (tmp_path / "tic298663873_s25.json").exists()
+
+
+def test_write_summary_populates_subclass(tmp_path):
+    """_write_summary must carry SummaryResult.subclass into the written JSON —
+    a rotator light curve must not fall back to the default 'quiet'."""
+    import json
+
+    t = np.arange(15000) * (2.0 / (60 * 24))
+    rng = np.random.default_rng(0)
+    # spot-shaped (non-sinusoidal) rotator: sine + strong 2nd harmonic
+    raw = (1.0 + 0.02 * np.sin(2 * np.pi * t / 6.0)
+           + 0.012 * np.sin(4 * np.pi * t / 6.0 + 0.7) + rng.normal(0, 5e-4, t.size))
+    flat = 1.0 + rng.normal(0, 5e-4, t.size)
+    pipeline._write_summary(str(tmp_path), 42, 16, 120, t, raw, flat)
+    rec = json.loads((tmp_path / "tic42_s16.json").read_text())
+    assert rec["var_class"] == "rotator"
+    assert rec["subclass"] in ("rotator", "pulsator")   # computed, not default 'quiet'
