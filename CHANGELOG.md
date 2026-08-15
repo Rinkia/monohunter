@@ -21,6 +21,25 @@ The reproducibility + auto-vet release.
   so the 92% leave-one-out model is unchanged.
 - **`triage --min-prob P`** hides the sub-threshold junk tail (auto-cut).
 
+### Ephemeris
+- **Gaia DR3 stellar-density fallback:** when the TIC has no usable density, derive
+  ρ\* = 3g/(4πGR) from Gaia DR3 `logg_gspphot` + `radius_gspphot` (no mass-radius
+  assumption; validated against the Sun). Unblocks the period + next-transit window
+  for bright, uncatalogued hosts — exactly the best mono-transit targets. Live: TIC
+  400048097 went from period-unconstrained to P≈29 d with a next-transit window.
+
+### Eclipsing binaries
+- **Cross-sector periods:** `run_eb` now also stitches eclipse times across all
+  sectors, so a target with one eclipse per sector — unrecoverable in any single
+  sector — gets a period from the combined primaries (the EB analogue of
+  `measured_period_d`). Flags the possible integer alias for sparse epochs.
+
+### Adoption
+- **Zero-install Colab quickstart** (`notebooks/monohunter_quickstart.ipynb`) with an
+  Open-in-Colab badge — run it in a browser, no Python setup.
+- **Issue-form candidate submission** (`.github/ISSUE_TEMPLATE/candidate.yml`) so
+  non-coders can submit a vetted candidate without git.
+
 ## 0.3.2
 
 ### Fixed

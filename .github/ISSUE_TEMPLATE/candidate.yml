@@ -1,0 +1,70 @@
+name: Submit a candidate
+description: Report a vetted mono-transit / eclipsing-binary candidate for the leaderboard (no git needed)
+title: "[candidate] TIC "
+labels: ["candidate"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Found a clean, isolated dip that is **not** a known TOI? Submit it here — a
+        maintainer turns a complete, vetted submission into a `contributions/` entry.
+        A candidate is not a discovery; please vet the plot first (real transit on a
+        flat baseline, not a sector-edge ramp / gap / single bad point).
+  - type: input
+    id: tic
+    attributes:
+      label: TIC id
+      placeholder: "298663873"
+    validations:
+      required: true
+  - type: input
+    id: sector
+    attributes:
+      label: Sector
+      placeholder: "19"
+    validations:
+      required: true
+  - type: input
+    id: snr
+    attributes:
+      label: SNR (from the run output)
+      placeholder: "39"
+    validations:
+      required: true
+  - type: input
+    id: depth
+    attributes:
+      label: Depth (ppt)
+      placeholder: "4.1"
+    validations:
+      required: true
+  - type: input
+    id: duration
+    attributes:
+      label: Duration (hours)
+      placeholder: "24"
+    validations:
+      required: true
+  - type: textarea
+    id: plot
+    attributes:
+      label: Diagnostic plot
+      description: Paste/drag the PNG monohunter wrote (candidates/tic..._s...png). This is the most important field.
+    validations:
+      required: true
+  - type: checkboxes
+    id: vetting
+    attributes:
+      label: Vetting checklist
+      options:
+        - label: The dip is a coherent, centered transit on a flat baseline (not an edge ramp, gap, or single point)
+          required: true
+        - label: It survives re-running with a different detrend window
+          required: true
+        - label: It is NOT a known TOI (the run output did not flag a known TESS Object of Interest)
+          required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: Optional — ground-survey checks, VSX status, why you think it's interesting.

@@ -6,6 +6,12 @@ structurally under-find. Built so many people can each search under-covered
 targets and combine machine-readable finds.
 
 [![PyPI](https://img.shields.io/pypi/v/monohunter)](https://pypi.org/project/monohunter/)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Rinkia/monohunter/blob/main/notebooks/monohunter_quickstart.ipynb)
+
+**New here? Run it in your browser — no install.** The
+[quickstart notebook](notebooks/monohunter_quickstart.ipynb) installs monohunter in
+Colab, recovers a known single transit to prove it works, then scans any star you
+pick. Open it with the badge above.
 
 ## Why
 
@@ -301,9 +307,15 @@ One-time to publish: repo **Settings → Pages → Source = "GitHub Actions"**
 ## Contributing
 
 Found a candidate, or want to improve the detector? See
-[CONTRIBUTING.md](CONTRIBUTING.md). Candidate submissions go to
-[`contributions/<username>/`](contributions/) via the
-[candidate PR template](https://github.com/Rinkia/monohunter/compare?template=candidate.md).
+[CONTRIBUTING.md](CONTRIBUTING.md).
+
+- **No git? Use the issue form.** Open a
+  [Submit a candidate](https://github.com/Rinkia/monohunter/issues/new?template=candidate.yml)
+  issue — fill in the TIC, sector, stats, drag in the PNG, tick the vetting boxes.
+  A maintainer turns a complete submission into a leaderboard entry.
+- **Comfortable with git?** Candidate submissions go to
+  [`contributions/<username>/`](contributions/) via the
+  [candidate PR template](https://github.com/Rinkia/monohunter/compare?template=candidate.md).
 
 ## Development
 
