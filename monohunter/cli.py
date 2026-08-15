@@ -441,14 +441,21 @@ def main(argv: list[str] | None = None) -> int:
         import shutil
 
         from .catalog_page import load_catalog, render_catalog_html
+        from .rotation_plot import plot_rotation_distribution
 
         rows = load_catalog(args.csv)
         csv_name = os.path.basename(args.csv)
         out = Path(args.out)
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(render_catalog_html(rows, args.sector, csv_name), encoding="utf-8")
+        # rotation-distribution figure next to the page, embedded in it
+        plot_name = f"rotation_s{args.sector}.png"
+        n_rot = plot_rotation_distribution(rows, str(out.parent / plot_name), sector=args.sector)
+        out.write_text(
+            render_catalog_html(rows, args.sector, csv_name, plot_name=plot_name),
+            encoding="utf-8",
+        )
         shutil.copy(args.csv, out.parent / csv_name)   # ship the CSV next to the page for download
-        print(f"{len(rows)} stars -> {out} (+ {csv_name})")
+        print(f"{len(rows)} stars ({n_rot} rotators) -> {out} (+ {csv_name}, {plot_name})")
         return 0
 
     if args.cmd == "rotation-plot":

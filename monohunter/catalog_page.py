@@ -48,8 +48,14 @@ def _rows_html(rows: list[dict], cols) -> str:
     return "\n".join(out) or f'<tr><td colspan="{len(cols)}">none</td></tr>'
 
 
-def render_catalog_html(rows: list[dict], sector: int, csv_name: str) -> str:
-    """Static catalog page from CSV rows. Pure (no file IO)."""
+def render_catalog_html(
+    rows: list[dict], sector: int, csv_name: str, plot_name: str | None = None
+) -> str:
+    """Static catalog page from CSV rows. Pure (no file IO).
+
+    plot_name: filename of a rotation-distribution PNG sitting next to the page;
+    embedded as a figure when given.
+    """
     generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     counts = Counter(r.get("var_class", "quiet") for r in rows)
     chips = " ".join(
@@ -71,9 +77,17 @@ def render_catalog_html(rows: list[dict], sector: int, csv_name: str) -> str:
         ("flares", lambda r: r["n_flares"]),
         ("amp (ppt)", lambda r: f'{_f(r, "var_amplitude_ppt"):.1f}'),
     ]
+    plot_html = (
+        f'<h2>Rotation-period distribution</h2>\n'
+        f'<p class="meta">Period distribution and the period–amplitude relation over '
+        f'every rotator in the sweep.</p>\n'
+        f'<img class="plot" src="{html.escape(plot_name)}" '
+        f'alt="Sector {sector} rotation-period distribution and period-amplitude relation">'
+        if plot_name else ""
+    )
     return _TEMPLATE.format(
         sector=sector, generated=generated, total=len(rows), chips=chips,
-        csv_name=html.escape(csv_name),
+        csv_name=html.escape(csv_name), plot=plot_html,
         rot_head="".join(f"<th>{h}</th>" for h, _ in rot_cols),
         rot_rows=_rows_html(_top(rows, "rotator", "rotation_power"), rot_cols),
         var_head="".join(f"<th>{h}</th>" for h, _ in var_cols),
@@ -102,6 +116,7 @@ _TEMPLATE = """<!doctype html>
   th, td {{ text-align: left; padding: .4rem .6rem; border-bottom: 1px solid #eee; }}
   th {{ font-size: 13px; text-transform: uppercase; color: #888; }}
   a {{ color: #0a5; }}
+  img.plot {{ width: 100%; height: auto; margin-top: .5rem; border: 1px solid #eee; border-radius: 6px; }}
 </style>
 </head>
 <body>
@@ -113,6 +128,8 @@ sweep, from the same downloads · <a href="{csv_name}">download full CSV</a> ·
 <p class="meta">Rotation periods from Lomb-Scargle on the raw (un-transit-detrended)
 flux; instrumental periods (~13.7 d TESS orbit, 1 d, longer than the baseline) are
 excluded. A period here is a candidate — worth a phased look before use.</p>
+
+{plot}
 
 <h2>Strongest rotators</h2>
 <table><thead><tr>{rot_head}</tr></thead><tbody>{rot_rows}</tbody></table>
