@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.1
+
+### Fixed
+- **Eclipse fragmentation in `eb`:** a shallow/jagged eclipse that briefly rose
+  back above the detection threshold was split into several runs, over-counting
+  one eclipse as many (TIC 120239458 S16 reported 5 eclipses for a real 2). Merge
+  runs whose minima fall within 0.3 d, keeping the deepest.
+
 ## 0.3.0
 
 More population science from the same downloads: orbital periods for eclipsing
