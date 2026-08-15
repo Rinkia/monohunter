@@ -72,6 +72,22 @@ def test_single_eclipse_period_none():
     assert res is not None and res.n_primary == 1 and res.orbital_period_d is None
 
 
+def test_fragments_of_one_eclipse_merge():
+    # a shallow jagged eclipse split into sub-hour fragments (like TIC 120239458's
+    # secondary) must count as ONE eclipse, not several.
+    t, f = _curve()
+    f = f + np.random.default_rng(6).normal(0, 5e-4, t.size)
+    f = _add_eclipse(t, f, 5.0, 0.20)                      # deep primary
+    for tc in (12.00, 12.04, 12.07, 12.09):               # one dip, fragmented
+        f = _add_eclipse(t, f, tc, 0.012, width_d=0.03)
+    events = eclipse_times(t, f)
+    assert len(events) == 2                                # not 5
+    res = eb_period(t, f)
+    assert res.n_eclipses == 2 and res.n_primary == 1
+    assert res.secondary_detected is True
+    assert res.orbital_period_d is None
+
+
 def test_flat_curve_no_eclipses():
     t, f = _curve()
     rng = np.random.default_rng(1)

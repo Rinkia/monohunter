@@ -32,6 +32,13 @@ ECLIPSE_DEPTH_SIGMA = 5.0
 # Minimum contiguous below-threshold cadences for a real eclipse (rejects single
 # negative outliers). Real eclipses last hours = many 2-min cadences.
 ECLIPSE_MIN_POINTS = 3
+# Two below-threshold runs closer than this are the SAME eclipse split by noise
+# briefly rising above threshold (a jagged/shallow dip fragments into several
+# runs). Merge them, keeping the deepest. A real eclipse lasts hours; two distinct
+# eclipses of one system are >= half a period apart, so 0.3 d separates fragments
+# from genuine siblings for all but ultra-short-period contact binaries.
+# ponytail: fixed gap; a proper dip model would merge by shape.
+MIN_ECLIPSE_SEP_D = 0.3
 # Eclipse minima are timed by flux-argmin over a flat-bottomed dip, so they jitter
 # by ~half the eclipse width — far looser than a sharp transit centroid. Loosen the
 # period-fit residual tolerance accordingly (transit default 0.01 is too tight).
@@ -100,7 +107,18 @@ def eclipse_times(
             continue
         j = s + int(np.argmin(f[s:e]))
         events.append(Eclipse(time_btjd=float(t[j]), depth_ppt=float((1.0 - f[j]) * 1e3)))
-    return events
+
+    # Merge fragments of one eclipse (runs split by noise briefly crossing the
+    # threshold): collapse events within MIN_ECLIPSE_SEP_D, keeping the deepest.
+    events.sort(key=lambda ev: ev.time_btjd)
+    merged: list[Eclipse] = []
+    for ev in events:
+        if merged and ev.time_btjd - merged[-1].time_btjd < MIN_ECLIPSE_SEP_D:
+            if ev.depth_ppt > merged[-1].depth_ppt:
+                merged[-1] = ev
+        else:
+            merged.append(ev)
+    return merged
 
 
 def eb_period(time, flat_flux) -> EbResult | None:
