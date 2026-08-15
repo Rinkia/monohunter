@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from monohunter.eb import eb_period, eclipse_times
+from monohunter.eb import eb_period, eb_period_from_eclipses, eclipse_times
 
 
 def _curve(n=15000, days=21.0):
@@ -86,6 +86,26 @@ def test_fragments_of_one_eclipse_merge():
     assert res.n_eclipses == 2 and res.n_primary == 1
     assert res.secondary_detected is True
     assert res.orbital_period_d is None
+
+
+def test_cross_sector_stitch_recovers_period():
+    # one primary eclipse per sector, sectors far apart -> unrecoverable per sector,
+    # recoverable from the stitched eclipse times (>=3 primaries pin the period).
+    # Primaries at BTJD 1005, 1012, 1019 (7 d apart across "sectors").
+    def sector_eclipse(t0):
+        t, f = _curve(days=3.0)
+        t = t + (t0 - 1.5)                     # center the 3-day window on t0
+        f = f + np.random.default_rng(int(t0)).normal(0, 5e-4, t.size)
+        f = _add_eclipse(t, f, t0, 0.10)
+        return eclipse_times(t, f)
+
+    all_ecl = sector_eclipse(1005.0) + sector_eclipse(1012.0) + sector_eclipse(1019.0)
+    # each "sector" alone: 1 primary -> no period
+    assert eb_period_from_eclipses(sector_eclipse(1005.0), assume_adjacent=True).orbital_period_d is None
+    # stitched: 3 primaries 7 d apart -> P recovered
+    combined = eb_period_from_eclipses(all_ecl, assume_adjacent=False)
+    assert combined.n_primary == 3
+    assert abs(combined.orbital_period_d - 7.0) < 0.1
 
 
 def test_flat_curve_no_eclipses():

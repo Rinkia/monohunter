@@ -489,11 +489,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "eb":
         from .eb import run_eb
 
-        results = run_eb(args.tic, sectors=args.sectors, window_length=args.window)
-        if not results:
+        per_sector, combined = run_eb(args.tic, sectors=args.sectors, window_length=args.window)
+        if not per_sector:
             print(f"No light curves for TIC {args.tic}.")
             return 0
-        for sector, res in results:
+        for sector, res in per_sector:
             if res is None:
                 print(f"S{sector}: no eclipse detected")
                 continue
@@ -508,6 +508,18 @@ def main(argv: list[str] | None = None) -> int:
                     f"S{sector}: {res.n_eclipses} eclipses ({res.n_primary} primary){sec} "
                     f"-> period needs >=2 same-type eclipses (unrecoverable from this sector)"
                 )
+        if combined is not None and combined.orbital_period_d is not None:
+            print(
+                f"ALL SECTORS: {combined.n_eclipses} eclipses ({combined.n_primary} primary) "
+                f"-> stitched orbital P = {combined.orbital_period_d:.4f}d "
+                f"(may be an integer multiple of the true period — sparse cross-sector "
+                f"eclipses alias to P*k)"
+            )
+        elif combined is not None:
+            print(
+                f"ALL SECTORS: {combined.n_eclipses} eclipses ({combined.n_primary} primary) "
+                f"-> still unrecoverable (need >=3 primaries, or 2 + a period guess)"
+            )
         return 0
 
     if args.cmd == "triage-train":
