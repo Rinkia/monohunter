@@ -40,6 +40,7 @@ jobs:
       - run: python -m pip install -e .
       - run: monohunter aggregate --contributions contributions --out _site
       - run: monohunter catalog-page --csv catalogs/sector15.csv --sector 15 --out _site/catalog.html
+      - run: monohunter catalog-page --csv catalogs/sector16.csv --sector 16 --out _site/catalog_s16.html
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
