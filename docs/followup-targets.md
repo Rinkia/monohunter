@@ -1,0 +1,63 @@
+# Follow-up targets
+
+Vetted monohunter candidates that warrant follow-up (radial velocity, stellar
+characterization, or catching a second transit). A candidate here is a *real,
+human-vetted* single-transit-like event that is **not** a known TOI and **not**
+in the AAVSO Variable Star Index (VSX) — i.e. potentially unclassified. A
+candidate is not a discovery: confirming a planet needs follow-up beyond this
+tool.
+
+---
+
+## TIC 400048097 — clean 2.5% single transit (priority)
+
+The best single-candidate result of the survey so far: a bright, uncatalogued
+star showing one clean, flat-bottomed transit.
+
+| Property | Value |
+|---|---|
+| RA / Dec (J2000) | 18.46387°, +31.81948°  (01h13m51.3s, +31°49′10″) |
+| Tmag | 9.53 (bright — accessible to modest RV facilities) |
+| Sector | TESS S17 (2-min SPOC) |
+| Transit epoch t0 | BTJD 1778.7007 (≈ 2019-11-13 UTC) |
+| Depth | 24.6 ppt (2.5%) |
+| Duration (T14) | 8.4 h |
+| Ingress | 1.44 h — **sharp / flat-bottomed, not V-shaped** |
+| SNR | 172 |
+| likely_eb | False (depth < 3%, not V-shaped) |
+| Known TOI | No |
+| VSX | **Not in VSX (uncatalogued)** |
+| Period | **Unconstrained** — TIC has no stellar density (Teff/rad/mass/ρ* all null) |
+| P_min | 14.0 d (a second transit would have shown within the sector baseline) |
+| n_sectors | 1 (single sector; not recurring) |
+
+### Why it's interesting
+- **Not a known variable, not a known planet.** Clears both the VSX and TOI
+  cross-checks — the actual discovery target, not another catalogued EB.
+- **Shape favours a transit over a grazing EB.** The ingress is a small fraction
+  of the duration (1.4 h of 8.4 h) → flat-bottomed, central (b≈0), not the
+  V-shape of a grazing eclipse. Depth 2.5% is consistent with a large planet /
+  brown dwarf / small star; RV separates these.
+- **Bright (Tmag 9.5).** A single spectrum yields stellar parameters (hence a
+  period estimate) and RV is feasible.
+
+### What's needed
+1. **Stellar characterization** (spectrum or Gaia): Teff, R\*, M\* → ρ\*. With ρ\*
+   the tool's own ephemeris estimator gives a period posterior + next-transit
+   window (currently blocked only by the missing ρ\*).
+2. **Second transit** to pin the period: P > 14 d (P_min). Check later TESS
+   sectors, or ground photometric monitoring once a period estimate exists.
+3. **Radial velocity** to measure the companion mass (planet vs brown dwarf vs
+   star).
+
+### Provenance
+Found in the S17 discovery sweep (5000 SPOC targets, 2026-08). One of 30 novel
+survivors; PNG-vetted (clean isolated transit on a flat baseline), VSX-novel.
+On the leaderboard: `contributions/Rinkia/tic400048097_s17.json`.
+
+---
+
+## Other novel finds (lower priority)
+
+- **TIC 118182747** (S17) — genuinely new deep 16% eclipsing binary (not in VSX).
+  Too deep for a planet; a new EB, worth a note but not planet follow-up.

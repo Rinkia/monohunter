@@ -266,6 +266,10 @@ Submitted candidates are aggregated into one ranked list — deduped by
 and SNR. Live at **https://rinkia.github.io/monohunter/**, rebuilt automatically
 on every merged contribution.
 
+Vetted candidates worth follow-up (RV, characterization, a second transit) are
+tracked in [docs/followup-targets.md](docs/followup-targets.md) — currently led by
+**TIC 400048097**, a bright, uncatalogued star with one clean 2.5% transit.
+
 Build it yourself from a `contributions/` tree:
 
 ```bash
