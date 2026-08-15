@@ -440,6 +440,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "catalog-page":
         import shutil
 
+        import re
+
         from .catalog_page import load_catalog, render_catalog_html
         from .rotation_plot import plot_rotation_distribution
 
@@ -447,11 +449,17 @@ def main(argv: list[str] | None = None) -> int:
         csv_name = os.path.basename(args.csv)
         out = Path(args.out)
         out.parent.mkdir(parents=True, exist_ok=True)
+        # sibling sectors for the nav bar: every sectorN.csv beside this one
+        sectors = sorted(
+            int(m.group(1))
+            for f in Path(args.csv).parent.glob("sector*.csv")
+            if (m := re.fullmatch(r"sector(\d+)", f.stem))
+        )
         # rotation-distribution figure next to the page, embedded in it
         plot_name = f"rotation_s{args.sector}.png"
         n_rot = plot_rotation_distribution(rows, str(out.parent / plot_name), sector=args.sector)
         out.write_text(
-            render_catalog_html(rows, args.sector, csv_name, plot_name=plot_name),
+            render_catalog_html(rows, args.sector, csv_name, plot_name=plot_name, sectors=sectors),
             encoding="utf-8",
         )
         shutil.copy(args.csv, out.parent / csv_name)   # ship the CSV next to the page for download

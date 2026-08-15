@@ -190,8 +190,7 @@ eclipsing sub-classification via periodogram harmonics.
 <a href="https://github.com/Rinkia/monohunter/blob/main/CHANGELOG.md">changelog</a>
 · <a href="https://pypi.org/project/monohunter/">PyPI</a></div>
 <p class="meta">{count} candidates · generated {generated} ·
-<a href="catalog.html">Sector 15 catalog</a> ·
-<a href="catalog_s16.html">Sector 16 catalog</a> ·
+<a href="catalog_s15.html">variability catalog</a> ·
 <a href="https://github.com/Rinkia/monohunter">contribute</a></p>
 <table>
 <thead><tr>

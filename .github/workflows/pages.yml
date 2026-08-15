@@ -39,8 +39,14 @@ jobs:
           python-version: "3.12"
       - run: python -m pip install -e .
       - run: monohunter aggregate --contributions contributions --out _site
-      - run: monohunter catalog-page --csv catalogs/sector15.csv --sector 15 --out _site/catalog.html
-      - run: monohunter catalog-page --csv catalogs/sector16.csv --sector 16 --out _site/catalog_s16.html
+      - name: Build a catalog page per sector (auto-discovers catalogs/sector*.csv)
+        run: |
+          for f in catalogs/sector*.csv; do
+            n=$(basename "$f" .csv | sed 's/sector//')
+            monohunter catalog-page --csv "$f" --sector "$n" --out "_site/catalog_s${n}.html"
+          done
+          # legacy landing: keep catalog.html working, redirect to the S15 page
+          printf '<!doctype html><meta http-equiv="refresh" content="0; url=catalog_s15.html">\n' > _site/catalog.html
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

@@ -22,6 +22,12 @@ from pathlib import Path
 _CLASS_ORDER = ("rotator", "variable", "flaring", "dipper", "quiet")
 
 
+def page_filename(sector: int) -> str:
+    """Catalog-page filename for a sector. Uniform scheme so the sector-nav links
+    resolve for any sector; `catalog.html` is kept as a redirect landing in CI."""
+    return f"catalog_s{sector}.html"
+
+
 def load_catalog(csv_path: str | Path) -> list[dict]:
     with open(csv_path, newline="", encoding="utf-8") as fh:
         return list(csv.DictReader(fh))
@@ -49,14 +55,28 @@ def _rows_html(rows: list[dict], cols) -> str:
 
 
 def render_catalog_html(
-    rows: list[dict], sector: int, csv_name: str, plot_name: str | None = None
+    rows: list[dict],
+    sector: int,
+    csv_name: str,
+    plot_name: str | None = None,
+    sectors: list[int] | None = None,
 ) -> str:
     """Static catalog page from CSV rows. Pure (no file IO).
 
     plot_name: filename of a rotation-distribution PNG sitting next to the page;
     embedded as a figure when given.
+    sectors: all sectors with a published catalog — rendered as a nav button bar
+    so a reader can hop between sector pages. The current sector is marked active.
     """
     generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    nav = ""
+    if sectors:
+        btns = " ".join(
+            f'<a class="btn{" active" if s == sector else ""}" '
+            f'href="{page_filename(s)}">Sector {s}</a>'
+            for s in sorted(sectors)
+        )
+        nav = f'<div class="nav">{btns}</div>'
     counts = Counter(r.get("var_class", "quiet") for r in rows)
     chips = " ".join(
         f'<span class="chip {c}">{c}: {counts.get(c, 0)}</span>' for c in _CLASS_ORDER
@@ -87,7 +107,7 @@ def render_catalog_html(
     )
     return _TEMPLATE.format(
         sector=sector, generated=generated, total=len(rows), chips=chips,
-        csv_name=html.escape(csv_name), plot=plot_html,
+        csv_name=html.escape(csv_name), plot=plot_html, nav=nav,
         rot_head="".join(f"<th>{h}</th>" for h, _ in rot_cols),
         rot_rows=_rows_html(_top(rows, "rotator", "rotation_power"), rot_cols),
         var_head="".join(f"<th>{h}</th>" for h, _ in var_cols),
@@ -117,10 +137,16 @@ _TEMPLATE = """<!doctype html>
   th {{ font-size: 13px; text-transform: uppercase; color: #888; }}
   a {{ color: #0a5; }}
   img.plot {{ width: 100%; height: auto; margin-top: .5rem; border: 1px solid #eee; border-radius: 6px; }}
+  .nav {{ margin: .6rem 0 1rem; }}
+  .nav .btn {{ display: inline-block; padding: .3rem .7rem; margin: .15rem .25rem .15rem 0;
+    border: 1px solid #cbd5e0; border-radius: 5px; text-decoration: none; color: #2b6cb0; font-size: 14px; }}
+  .nav .btn:hover {{ background: #f0f4f8; }}
+  .nav .btn.active {{ background: #0a7d2c; border-color: #0a7d2c; color: #fff; }}
 </style>
 </head>
 <body>
 <h1>monohunter — Sector {sector} variability catalog</h1>
+{nav}
 <p class="meta">{total} stars · generated {generated} · a by-product of the transit
 sweep, from the same downloads · <a href="{csv_name}">download full CSV</a> ·
 <a href="index.html">leaderboard</a></p>
