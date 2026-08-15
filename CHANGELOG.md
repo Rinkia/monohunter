@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.2
+
+### Fixed
+- **Subclass dropped on the sweep path:** `pipeline._write_summary` (used by
+  `run` and sweeps) computed the v0.3.0 sub-classification but never wrote it to
+  the summary, so every swept star fell back to `subclass="quiet"`. Now carried
+  through; regression-tested.
+
 ## 0.3.1
 
 ### Fixed
