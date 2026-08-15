@@ -92,6 +92,35 @@ class WatchResult:
     scanned: int
     remaining: int
     novel: list[FindRecord] = field(default_factory=list)
+    errors: int = 0
+
+
+# Per-star provenance log columns (the sweep CSV schema). Written when csv_log is
+# set so a full sweep leaves a status row per star (none/novel/error), not just
+# the candidate JSONs — the record retries and catalogs build from.
+_CSV_FIELDS = ["tic", "sector", "status", "best_snr", "best_depth_ppt",
+               "best_duration_hr", "event_time_btjd", "known_toi_id"]
+
+
+def _append_csv_row(csv_log: str, sector: int, tic: int, status: str,
+                    recs: list[FindRecord]) -> None:
+    import csv as _csv
+
+    new = not os.path.exists(csv_log) or os.path.getsize(csv_log) == 0
+    row = {k: "" for k in _CSV_FIELDS}
+    row["tic"], row["sector"], row["status"] = tic, sector, status
+    if recs:
+        best = max(recs, key=lambda r: r.snr)
+        row["best_snr"] = f"{best.snr:.2f}"
+        row["best_depth_ppt"] = f"{best.depth_ppt:.3f}"
+        row["best_duration_hr"] = f"{best.duration_hr:.2f}"
+        row["event_time_btjd"] = f"{best.event_time_btjd:.4f}"
+        row["known_toi_id"] = best.known_toi_id or ""
+    with open(csv_log, "a", newline="", encoding="utf-8") as fh:
+        w = _csv.DictWriter(fh, fieldnames=_CSV_FIELDS)
+        if new:
+            w.writeheader()
+        w.writerow(row)
 
 
 def watch(
@@ -104,6 +133,7 @@ def watch(
     source: str = "spoc",
     workers: int = 1,
     summaries_dir: str | None = None,
+    csv_log: str | None = None,
 ) -> WatchResult:
     """Process the next `max_targets` un-scanned TICs of `sector`. Resumable.
 
@@ -133,32 +163,51 @@ def watch(
     todo = pending_targets(state, sector, tics, max_targets)
 
     novel: list[FindRecord] = []
+    n_errors = 0
 
-    def consume(tic: int, recs: list[FindRecord]) -> None:
+    def consume(tic: int, recs: list[FindRecord], errored: bool) -> None:
         # Main-thread only: mutate state and write files here so nothing races.
+        nonlocal n_errors
+        if errored:
+            # Transient failure (usually MAST): DON'T mark processed, so the next
+            # run retries it automatically — no manual CSV clean/retry as with the
+            # old scratchpad sweeps. ponytail: a truly-corrupt star retries every
+            # run; add a per-tic attempt cap if that ever churns.
+            n_errors += 1
+            if csv_log:
+                _append_csv_row(csv_log, sector, tic, "error", [])
+            return
+        status = "none"
         for rec in recs:
             if not rec.known_toi_match:
+                status = "novel"
                 novel.append(rec)
                 path = Path(outdir) / f"tic{rec.tic}_s{rec.sector}.json"
                 path.write_text(rec.to_json(indent=2), encoding="utf-8")
+        if csv_log:
+            _append_csv_row(csv_log, sector, tic, status, recs)
         mark_processed(state, sector, [tic])
         save_state(state_path, state)   # incremental — resumable on crash
 
-    def safe_run(tic: int) -> list[FindRecord]:
+    def safe_run(tic: int) -> tuple[list[FindRecord], bool]:
         try:
-            return run(tic)
+            return run(tic), False
         except Exception:
-            return []
+            return [], True   # errored -> not marked processed -> retried next run
 
     if workers <= 1:
         for tic in todo:
-            consume(tic, safe_run(tic))
+            recs, errored = safe_run(tic)
+            consume(tic, recs, errored)
     else:
         with ThreadPoolExecutor(max_workers=workers) as pool:
             futures = {pool.submit(safe_run, tic): tic for tic in todo}
             for fut in as_completed(futures):
-                consume(futures[fut], fut.result())
+                recs, errored = fut.result()
+                consume(futures[fut], recs, errored)
 
     # state now includes what we just processed; whatever's still pending is remaining.
     remaining = len(pending_targets(state, sector, tics, None))
-    return WatchResult(sector=sector, scanned=len(todo), remaining=remaining, novel=novel)
+    return WatchResult(
+        sector=sector, scanned=len(todo), remaining=remaining, novel=novel, errors=n_errors
+    )

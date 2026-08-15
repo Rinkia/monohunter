@@ -207,6 +207,12 @@ def main(argv: list[str] | None = None) -> int:
         help="also write a stellar summary per scanned star here (rotation/"
         "variability catalog from the same downloads)",
     )
+    wat.add_argument(
+        "--csv-log", default=None, metavar="CSV",
+        help="append a provenance row per scanned star (tic,status,best_snr,...) "
+        "here — the sweep scan-log a catalog/retry builds from. Errored stars are "
+        "logged AND left un-processed so the next run retries them.",
+    )
 
     args = parser.parse_args(argv)
 
@@ -567,10 +573,12 @@ def main(argv: list[str] | None = None) -> int:
             source="ffi" if args.ffi else "spoc",
             workers=args.workers,
             summaries_dir=args.summaries,
+            csv_log=args.csv_log,
         )
         print(
             f"sector {res.sector}: scanned {res.scanned}, "
-            f"{len(res.novel)} novel, {res.remaining} remaining"
+            f"{len(res.novel)} novel, {res.errors} error (will retry), "
+            f"{res.remaining} remaining"
         )
         for rec in sorted(res.novel, key=lambda r: -r.snr):
             print(f"  NOVEL TIC {rec.tic} S{rec.sector} SNR {rec.snr:.0f} depth {rec.depth_ppt:.2f}ppt")

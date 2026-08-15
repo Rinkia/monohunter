@@ -166,6 +166,20 @@ Point `--sector` at the newest released sector. Candidates land in `watch_out/`;
 vet each with `monohunter run --tic <id> --sectors <N>` to get its PNG, then
 submit the good ones (see Contributing).
 
+**Reproducible sweeps.** `watch` *is* the sweep tool — resumable, parallel, and
+it logs provenance. For a full sector sweep:
+
+```bash
+monohunter watch --sector 17 --max 5000 --workers 3 \
+    --summaries summaries_s17 --csv-log sweeps/sector17.csv
+```
+
+`--csv-log` appends one status row per star (`none`/`novel`/`error`) — the
+scan-log a catalog and any retry build from. A star that errors (usually a
+transient MAST hiccup) is logged **and left un-processed**, so simply re-running
+the same command retries only the failures — no manual cleanup. `--summaries`
+writes the rotation/variability catalog from the same downloads.
+
 ## Next-transit ephemeris
 
 When a candidate's target has a catalog stellar density, monohunter estimates the

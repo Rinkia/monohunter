@@ -147,3 +147,39 @@ def test_cli_watch_ffi_threads_source(tmp_path, monkeypatch):
         "--out", str(tmp_path / "o"), "--state", str(tmp_path / "st.json"),
     ])
     assert seen["source"] == "ffi"
+
+
+def test_csv_log_and_error_retry(tmp_path):
+    """csv_log writes a status row per star; errored stars are NOT marked
+    processed, so the next run retries them (no manual clean/retry)."""
+    import csv
+
+    calls = {"n": 0}
+
+    def runner(tic):
+        # tic 2 fails the first time, succeeds on retry; 1 novel, 3 clean
+        if tic == 1:
+            return [_rec(1)]
+        if tic == 3:
+            return []
+        if tic == 2:
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError("transient MAST")
+            return [_rec(2)]
+        return []
+
+    log = tmp_path / "sweep.csv"
+    state = tmp_path / "state.json"
+    kw = dict(outdir=str(tmp_path / "out"), state_path=str(state),
+              target_pool=[1, 2, 3], runner=runner, csv_log=str(log), max_targets=10)
+
+    r1 = W.watch(14, **kw)
+    assert r1.errors == 1 and len(r1.novel) == 1        # tic2 errored, tic1 novel
+    rows1 = list(csv.DictReader(open(log)))
+    assert {r["tic"]: r["status"] for r in rows1} == {"1": "novel", "2": "error", "3": "none"}
+
+    r2 = W.watch(14, **kw)                               # retry run
+    assert r2.scanned == 1 and r2.errors == 0           # only the errored tic2 retried
+    statuses = [r["status"] for r in csv.DictReader(open(log)) if r["tic"] == "2"]
+    assert statuses == ["error", "novel"]               # retried and succeeded
