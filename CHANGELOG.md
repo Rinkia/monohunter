@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.4.0
+
+The reproducibility + auto-vet release.
+
+### Sweeps
+- **`watch` is the sweep tool** — `--csv-log` writes a provenance row per star
+  (`none`/`novel`/`error`), matching the old scratchpad-sweep schema. A full
+  sector sweep is now one reproducible command instead of a rebuilt script.
+- **Errored stars auto-retry:** a transient failure (usually MAST) is logged and
+  left un-processed, so re-running the same command retries only the failures — no
+  manual clean-and-relaunch.
+
+### Triage (FP auto-vet)
+- **Generalized off the S14 hardcode (schema v7):** records now carry
+  `edge_gap_dist_d` (distance to the nearest sector edge/gap) and
+  `baseline_scatter_ppt` (faint/noisy-star tell), computed from the light curve.
+  Triage uses `edge_gap_dist_d` in place of the S14-hardcoded systematic times, so
+  it ranks survivors on **any** sector. Old records fall back to the S14 proximity,
+  so the 92% leave-one-out model is unchanged.
+- **`triage --min-prob P`** hides the sub-threshold junk tail (auto-cut).
+
 ## 0.3.2
 
 ### Fixed

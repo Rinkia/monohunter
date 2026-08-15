@@ -27,47 +27,69 @@ from pathlib import Path
 import numpy as np
 
 # Sector-14 systematic times (BTJD): start-of-sector ramp, mid-sector downlink
-# gap (~1696), end-of-sector ramp. Proximity to these is the dominant FP tell.
-# ponytail: hardcoded for the S14 survey. The general version stores each event's
-# gap/edge distance on the record at detection time (a small schema add later).
+# gap (~1696), end-of-sector ramp. Legacy FALLBACK only — used to derive an
+# edge/gap distance for old records/CSVs that predate the edge_gap_dist_d field.
+# New records carry edge_gap_dist_d directly (general, per-sector), so the model
+# transfers across sectors without this hardcode.
 S14_SYSTEMATIC_TIMES = (1683.4, 1696.0, 1710.5)
 
 FEATURE_NAMES = (
     "log_snr", "log_depth_ppt", "duration_hr",
-    "likely_eb", "period_constrained", "systematic_proximity_d",
+    "likely_eb", "period_constrained", "edge_gap_dist_d", "log_baseline_scatter",
 )
+
+
+def _legacy_edge_gap(event_time_btjd: float) -> float:
+    """Edge/gap distance from S14 systematic times — the fallback when a record/row
+    has no edge_gap_dist_d (the S14 systematics ARE the sector edges + mid-gap, so
+    this equals the general feature for the S14 training set)."""
+    return min(abs(float(event_time_btjd) - t) for t in S14_SYSTEMATIC_TIMES)
 
 
 def extract_features(
     snr: float,
     depth_ppt: float,
     duration_hr: float,
-    event_time_btjd: float,
     likely_eb: bool | None,
     period_constrained: bool | None,
-    systematic_times=S14_SYSTEMATIC_TIMES,
+    edge_gap_dist_d: float,
+    baseline_scatter_ppt: float | None,
 ) -> np.ndarray:
-    """Feature vector for one candidate. Pure and deterministic."""
-    prox = min(abs(float(event_time_btjd) - t) for t in systematic_times)
+    """Feature vector for one candidate. Pure and deterministic.
+
+    edge_gap_dist_d: distance to the nearest sector edge/gap (general FP tell).
+    baseline_scatter_ppt: robust per-cadence scatter (faint/noisy-star tell);
+    None -> neutral 0 (older data without the field).
+    """
+    scatter = float(baseline_scatter_ppt) if baseline_scatter_ppt else 0.0
     return np.array([
         np.log10(max(float(snr), 1e-3)),
         np.log10(max(float(depth_ppt), 1e-3)),
         float(duration_hr),
         1.0 if likely_eb else 0.0,
         1.0 if period_constrained else 0.0,
-        float(prox),
+        float(edge_gap_dist_d),
+        np.log10(max(scatter, 1e-3)),
     ], dtype=float)
 
 
 def _features_from_row(row: dict) -> np.ndarray | None:
     try:
+        # edge_gap_dist_d / baseline_scatter from the CSV when present (new sweeps),
+        # else fall back to the S14-systematic proximity / neutral scatter (old CSVs).
+        edge_gap = row.get("edge_gap_dist_d")
+        edge_gap_d = float(edge_gap) if edge_gap not in (None, "", "None") \
+            else _legacy_edge_gap(float(row["event_time_btjd"]))
+        scatter = row.get("baseline_scatter_ppt")
+        scatter_ppt = float(scatter) if scatter not in (None, "", "None") else None
         return extract_features(
             snr=float(row["best_snr"]),
             depth_ppt=float(row["best_depth_ppt"]),
             duration_hr=float(row["best_duration_hr"]),
-            event_time_btjd=float(row["event_time_btjd"]),
             likely_eb=float(row["best_depth_ppt"]) > 30.0,   # CSV lacks the flag; depth proxy
             period_constrained=True,                          # CSV lacks it; neutral
+            edge_gap_dist_d=edge_gap_d,
+            baseline_scatter_ppt=scatter_ppt,
         )
     except (KeyError, ValueError):
         return None
@@ -132,10 +154,13 @@ def cross_val_accuracy(X: np.ndarray, y: np.ndarray) -> float:
 def score_record(model, rec) -> float:
     """P(interesting) for a FindRecord (or dict with the same fields)."""
     get = (lambda k: getattr(rec, k, None)) if not isinstance(rec, dict) else rec.get
+    edge_gap = get("edge_gap_dist_d")
+    if edge_gap is None:                                   # old record: derive from t0
+        edge_gap = _legacy_edge_gap(get("event_time_btjd"))
     feat = extract_features(
         snr=get("snr"), depth_ppt=get("depth_ppt"), duration_hr=get("duration_hr"),
-        event_time_btjd=get("event_time_btjd"),
         likely_eb=get("likely_eb"), period_constrained=get("period_constrained"),
+        edge_gap_dist_d=edge_gap, baseline_scatter_ppt=get("baseline_scatter_ppt"),
     ).reshape(1, -1)
     return float(model.predict_proba(feat)[0, 1])
 

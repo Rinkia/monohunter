@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-SCHEMA_VERSION = 6  # v6 adds measured_period_d (exact period from multi-sector transit times)
+SCHEMA_VERSION = 7  # v7 adds edge_gap_dist_d + baseline_scatter_ppt (general FP-triage features)
 
 
 class FindRecord(BaseModel):
@@ -57,6 +57,14 @@ class FindRecord(BaseModel):
     # None unless >=2 transits were seen.
     measured_period_d: float | None = None
     n_transits_used: int | None = None
+
+    # v7: general FP-triage features (replace triage's S14-hardcoded systematic
+    # times). edge_gap_dist_d = distance from the event to the nearest sector edge
+    # or internal data gap (the FP classes cluster there); baseline_scatter_ppt =
+    # robust per-cadence scatter of the flattened flux (faint/noisy stars produce
+    # untrustworthy shallow "dips"). Both computed at build time from the light curve.
+    edge_gap_dist_d: float | None = None
+    baseline_scatter_ppt: float | None = None
 
     def to_json(self, **kwargs: object) -> str:
         return self.model_dump_json(**kwargs)  # type: ignore[arg-type]

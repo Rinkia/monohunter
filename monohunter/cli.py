@@ -158,6 +158,8 @@ def main(argv: list[str] | None = None) -> int:
     tr = sub.add_parser("triage", help="rank candidate records by P(worth vetting)")
     tr.add_argument("--model", default="triage_model.pkl", help="trained model path")
     tr.add_argument("--candidates", required=True, help="dir of candidate record JSONs")
+    tr.add_argument("--min-prob", type=float, default=0.0, metavar="P",
+                    help="only show candidates scoring >= P (auto-cut the junk tail)")
 
     vet = sub.add_parser(
         "vet", help="build a static crowd-vetting page (candidate PNGs + label buttons)"
@@ -530,8 +532,11 @@ def main(argv: list[str] | None = None) -> int:
 
         model = load_model(args.model)
         ranked = rank_candidates(model, args.candidates)
-        print(f"{len(ranked)} candidate(s) ranked by P(worth vetting):")
-        for tic, sector, p in ranked:
+        shown = [r for r in ranked if r[2] >= args.min_prob]
+        cut = len(ranked) - len(shown)
+        note = f" ({cut} below P={args.min_prob:.2f} hidden)" if cut else ""
+        print(f"{len(shown)}/{len(ranked)} candidate(s) by P(worth vetting){note}:")
+        for tic, sector, p in shown:
             print(f"  P={p:.2f}  TIC {tic} S{sector}")
         return 0
 

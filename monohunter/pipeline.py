@@ -85,6 +85,38 @@ def _save_plot(outdir: str, rec: FindRecord, time: np.ndarray, flux: np.ndarray)
     return path
 
 
+_MAD_TO_SIGMA = 1.4826
+_GAP_THRESHOLD_D = 0.2
+
+
+def _edge_gap_dist_d(t0: float, time: np.ndarray) -> float:
+    """Distance from t0 to the nearest sector edge or internal data gap boundary.
+
+    The residual FP classes (start/end-of-sector ramps, mid-gap ramps) cluster at
+    these boundaries; a real transit sits well inside a contiguous stretch. This is
+    the general, per-sector version of triage's old S14-hardcoded systematic times.
+    """
+    t = np.asarray(time, dtype=float)
+    t = np.sort(t[np.isfinite(t)])
+    if t.size < 2:
+        return 0.0
+    bounds = [t[0], t[-1]]                                   # sector start / end
+    gaps = np.nonzero(np.diff(t) > _GAP_THRESHOLD_D)[0]      # internal gap boundaries
+    for g in gaps:
+        bounds += [t[g], t[g + 1]]
+    return float(min(abs(float(t0) - b) for b in bounds))
+
+
+def _baseline_scatter_ppt(flat: np.ndarray) -> float:
+    """Robust per-cadence scatter (MAD sigma) of the flattened flux, in ppt.
+    Faint/noisy stars have large scatter and can't yield a trustworthy shallow dip."""
+    f = np.asarray(flat, dtype=float)
+    f = f[np.isfinite(f)]
+    if f.size < 2:
+        return 0.0
+    return float(_MAD_TO_SIGMA * np.median(np.abs(f - np.median(f))) * 1e3)
+
+
 def build_record(
     tic: int,
     sector: int,
@@ -138,6 +170,8 @@ def build_record(
         likely_eb=is_likely_eb(depth_ppt, ingress_hr, duration_hr),
         n_sectors_observed=n_sectors_observed,
         recurring_dip=recurring_dip,
+        edge_gap_dist_d=_edge_gap_dist_d(t0, time),
+        baseline_scatter_ppt=_baseline_scatter_ppt(flat),
     )
     post = estimate_period(
         t0_btjd=t0,

@@ -99,7 +99,8 @@ class WatchResult:
 # set so a full sweep leaves a status row per star (none/novel/error), not just
 # the candidate JSONs — the record retries and catalogs build from.
 _CSV_FIELDS = ["tic", "sector", "status", "best_snr", "best_depth_ppt",
-               "best_duration_hr", "event_time_btjd", "known_toi_id"]
+               "best_duration_hr", "event_time_btjd", "known_toi_id",
+               "edge_gap_dist_d", "baseline_scatter_ppt"]
 
 
 def _append_csv_row(csv_log: str, sector: int, tic: int, status: str,
@@ -116,6 +117,10 @@ def _append_csv_row(csv_log: str, sector: int, tic: int, status: str,
         row["best_duration_hr"] = f"{best.duration_hr:.2f}"
         row["event_time_btjd"] = f"{best.event_time_btjd:.4f}"
         row["known_toi_id"] = best.known_toi_id or ""
+        if best.edge_gap_dist_d is not None:
+            row["edge_gap_dist_d"] = f"{best.edge_gap_dist_d:.4f}"
+        if best.baseline_scatter_ppt is not None:
+            row["baseline_scatter_ppt"] = f"{best.baseline_scatter_ppt:.4f}"
     with open(csv_log, "a", newline="", encoding="utf-8") as fh:
         w = _csv.DictWriter(fh, fieldnames=_CSV_FIELDS)
         if new:
