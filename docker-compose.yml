@@ -18,6 +18,7 @@ services:
       MAX: "200"        # stars scanned per cycle (incremental; resumable)
       WORKERS: "3"      # parallel MAST downloads (keep modest; MAST-polite)
       SLEEP: "10800"    # seconds between cycles (3 h)
+      MAXHOURS: "4"     # safety net: force-exit a cycle that hangs past this (resumable)
     volumes:
       - ./data:/data
     entrypoint: ["sh", "-lc"]
@@ -25,6 +26,7 @@ services:
     command: >
       while true; do
         monohunter watch --hint "$$HINT" --max "$$MAX" --workers "$$WORKERS"
+          --max-hours "$$MAXHOURS"
           --out /data/candidates --state /data/watch_state.json
           --summaries /data/summaries --csv-log /data/sweep.csv || true;
         find /data/.cache/lightkurve -name '*.fits' -size 65536c -delete 2>/dev/null || true;

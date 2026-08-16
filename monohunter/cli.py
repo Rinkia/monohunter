@@ -215,6 +215,12 @@ def main(argv: list[str] | None = None) -> int:
         "here — the sweep scan-log a catalog/retry builds from. Errored stars are "
         "logged AND left un-processed so the next run retries them.",
     )
+    wat.add_argument(
+        "--max-hours", type=float, default=None, metavar="H",
+        help="safety net: force-exit if the run exceeds H hours (a hung MAST socket "
+        "can wedge a worker forever). Resumable — re-run to continue. Set a bit above "
+        "the expected runtime (e.g. 5 for a ~4h sweep).",
+    )
 
     args = parser.parse_args(argv)
 
@@ -591,6 +597,7 @@ def main(argv: list[str] | None = None) -> int:
             workers=args.workers,
             summaries_dir=args.summaries,
             csv_log=args.csv_log,
+            max_hours=args.max_hours,
         )
         print(
             f"sector {res.sector}: scanned {res.scanned}, "

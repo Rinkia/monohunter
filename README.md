@@ -187,9 +187,13 @@ submit the good ones (see Contributing).
 it logs provenance. For a full sector sweep:
 
 ```bash
-monohunter watch --sector 17 --max 5000 --workers 3 \
+monohunter watch --sector 17 --max 5000 --workers 3 --max-hours 5 \
     --summaries summaries_s17 --csv-log sweeps/sector17.csv
 ```
+
+`--max-hours` is a safety net: a hung MAST socket can wedge a worker indefinitely,
+so the run force-exits past that wall-clock (set it a bit above the expected
+runtime). It's resumable — re-run the same command to continue where it stopped.
 
 `--csv-log` appends one status row per star (`none`/`novel`/`error`) — the
 scan-log a catalog and any retry build from. A star that errors (usually a

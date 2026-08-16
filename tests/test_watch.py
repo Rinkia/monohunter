@@ -183,3 +183,29 @@ def test_csv_log_and_error_retry(tmp_path):
     assert r2.scanned == 1 and r2.errors == 0           # only the errored tic2 retried
     statuses = [r["status"] for r in csv.DictReader(open(log)) if r["tic"] == "2"]
     assert statuses == ["error", "novel"]               # retried and succeeded
+
+
+def test_watchdog_disarmed_on_clean_finish(tmp_path):
+    # a fast run well under the deadline completes normally; the timer is cancelled
+    r = W.watch(14, target_pool=[1, 2, 3], runner=lambda t: [],
+                outdir=str(tmp_path / "o"), state_path=str(tmp_path / "s.json"),
+                csv_log=str(tmp_path / "c.csv"), max_hours=1.0, max_targets=10)
+    assert r.scanned == 3          # finished, no forced exit
+
+
+def test_watchdog_fires_on_deadline(tmp_path, monkeypatch):
+    import os as _os
+    import time
+
+    fired = {}
+
+    def fake_exit(code):
+        fired["code"] = code
+        raise SystemExit(code)     # swallowed by the daemon thread; proves _fire ran
+
+    monkeypatch.setattr(_os, "_exit", fake_exit)
+    t = W._start_watchdog(0.0002, str(tmp_path / "s.json"), lambda: "0/1 processed")  # ~0.7s
+    time.sleep(1.0)
+    t.cancel()
+    assert fired.get("code") == 2
+    assert (tmp_path / "s.json.watchdog").exists()   # deadline marker written
