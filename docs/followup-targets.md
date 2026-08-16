@@ -60,7 +60,32 @@ On the leaderboard: `contributions/Rinkia/tic400048097_s17.json`.
 
 ---
 
+## TIC 22945095 — novel 2.7% transit, near-term window (Sector 18)
+
+A second strong single-transit candidate — novel (not in VSX), not EB-flagged, and
+with a **tighter** period than 400048097 thanks to a Gaia-derived ρ\*.
+
+| Property | Value |
+|---|---|
+| Sector | TESS S18 (2-min SPOC) |
+| Depth | 27 ppt (2.7%) |
+| Duration (T14) | 2.4 h (short — fast transit) |
+| Ingress | 0.89 h |
+| SNR | 77 |
+| likely_eb | False |
+| VSX | **Not in VSX (uncatalogued)** |
+| Period | **P ≈ 12.5 d** (9.5–26 d) — from a Gaia DR3 ρ\* |
+| Next transit | **≈ 2026-08-23** (window is narrower than 400048097's) |
+| Baseline scatter | 0.68 ppt (clean host) |
+
+The short 2.4 h duration at 2.7 % depth hints at a small/dense host or a grazing
+geometry; RV separates the cases. The next-transit window is only ~a week out and
+narrower than 400048097's, so ground photometric follow-up is more tractable here.
+On the leaderboard: `contributions/Rinkia/tic22945095_s18.json`.
+
 ## Other novel finds (lower priority)
+
+- **TIC 73487688** (S18) — new deep ~7% eclipsing binary (VSX-novel). A new EB.
 
 - **TIC 118182747** (S17) — genuinely new deep 16% eclipsing binary (not in VSX).
   Too deep for a planet; a new EB, worth a note but not planet follow-up.
