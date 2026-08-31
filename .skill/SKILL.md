@@ -117,7 +117,7 @@ monohunter anomaly --tic <id>                     # flares + dippers
 monohunter vet --candidates DIR --out _vet        # crowd label page
 monohunter triage-train --labels labels/seed_labels.csv --sweeps sweeps
 monohunter triage --candidates DIR                # rank by P(worth vetting)
-monohunter completeness --tic <quiet> --sector N  # or --sample M --catalog CSV
+monohunter completeness --tic <quiet> --sector N [--sample M --catalog CSV] [--plot PNG]
 monohunter novelty --tic <id> | --candidates DIR  # VSX + Gaia DR3 known-vs-new
 monohunter ffi-pool --sector N --tic <c> --radius 0.2 --out ffi_pool.txt  # non-SPOC pool
 monohunter watch --sector N --ffi --target-pool ffi_pool.txt  # true FFI sweep

@@ -137,6 +137,41 @@ def run_completeness(tic: int, sector: int, n: int = 20, window_length: float = 
     return None, 0, True
 
 
+def plot_completeness_grid(
+    grid: dict, out_path: str, depths=DEFAULT_DEPTHS_PPT, durations=DEFAULT_DURATIONS_HR,
+    title: str | None = None,
+) -> str:
+    """Render a depth x duration recovery-fraction heatmap — the publishable survey
+    sensitivity figure. Cell labels are recovered %. Returns out_path."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    z = np.array([[grid.get((d, dur), np.nan) for dur in durations] for d in depths]) * 100.0
+    fig, ax = plt.subplots(figsize=(7, 5))
+    im = ax.imshow(z, origin="lower", aspect="auto", cmap="viridis", vmin=0, vmax=100,
+                   extent=[0, len(durations), 0, len(depths)])
+    ax.set_xticks(np.arange(len(durations)) + 0.5)
+    ax.set_xticklabels([f"{d:.0f}h" for d in durations])
+    ax.set_yticks(np.arange(len(depths)) + 0.5)
+    ax.set_yticklabels([f"{d:.1f}" for d in depths])
+    ax.set_xlabel("transit duration")
+    ax.set_ylabel("injected depth [ppt]")
+    ax.set_title(title or "Injection-recovery completeness")
+    for i in range(len(depths)):
+        for j in range(len(durations)):
+            v = z[i, j]
+            if np.isfinite(v):
+                ax.text(j + 0.5, i + 0.5, f"{v:.0f}", ha="center", va="center",
+                        color="white" if v < 50 else "black", fontsize=9)
+    fig.colorbar(im, ax=ax, label="recovered %")
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=110)
+    plt.close(fig)
+    return out_path
+
+
 def mean_grid(grids: list[dict]) -> dict:
     """Average a set of per-star recovery grids into one survey grid."""
     keys = grids[0].keys()

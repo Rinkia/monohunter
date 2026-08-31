@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.1
+
+- **`completeness --plot PNG`** renders the depth × duration recovery-fraction heatmap
+  — the publishable survey-sensitivity figure — alongside the existing text grid. Works
+  for both single-star and `--sample` survey mode. (`observe`, the other actionability
+  gate, shipped in 0.5.2.)
+
 ## 0.6.0
 
 Two new data sources for the discovery frontier.

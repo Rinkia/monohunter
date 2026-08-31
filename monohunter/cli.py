@@ -170,6 +170,9 @@ def main(argv: list[str] | None = None) -> int:
                       help="SURVEY mode: average over M stars stratified across the catalog's "
                       "noise range (needs --catalog)")
     comp.add_argument("--catalog", default=None, help="catalog CSV to draw the --sample from")
+    comp.add_argument("--plot", default=None, metavar="PNG",
+                      help="also render the depth x duration recovery heatmap here "
+                      "(the publishable survey-sensitivity figure)")
 
     sm = sub.add_parser(
         "summarize",
@@ -515,6 +518,7 @@ def main(argv: list[str] | None = None) -> int:
             DEFAULT_DEPTHS_PPT,
             DEFAULT_DURATIONS_HR,
             completeness_depth,
+            plot_completeness_grid,
             run_completeness,
             run_completeness_sample,
         )
@@ -562,6 +566,11 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {dur:.0f}h transit: 50% complete at "
                   f"{f'{d50:.1f}ppt' if d50 else '>10ppt'}, "
                   f"90% at {f'{d90:.1f}ppt' if d90 else '>10ppt'}")
+        if args.plot:
+            title = (f"Completeness — S{args.sector} survey"
+                     if args.sample else f"Completeness — TIC {args.tic} S{args.sector}")
+            plot_completeness_grid(grid, args.plot, title=title)
+            print(f"heatmap -> {args.plot}")
         return 0
 
     if args.cmd == "summarize":
