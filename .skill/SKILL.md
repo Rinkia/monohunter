@@ -246,8 +246,10 @@ Everything in v0.1.0 PLUS this session:
    SKIPPED: recent-finds gallery (needs committed PNGs).
 
 ## Next steps / open
-- **Vet the S16 8 novels** (PNG each via `run --tic <id> --sectors 16`), promote the
-  real ones to contributions/ for the leaderboard. TIC 120239458 is a clear EB (skip).
+- **S16 8 novels VETTED (2026-08-31) -> 0 real.** PNG-checked all 7 low-SNR (7-9.6)
+  survivors: every one is the residual edge/gap/scatter FP class (start-of-sector ramp,
+  pre-gap scatter stripe, mid-gap flank). None promoted. TIC 120239458 = known deep EB.
+  Nothing to contributions/. Confirms the skill's residual-FP prediction; don't re-vet.
 - **Repopulate subclass** on the S15/S16 catalogs — needs a fresh summary sweep
   (subclass can't be recomputed from the CSV; it needs the light curves). Now that
   v0.3.2 writes it on the sweep path, the next sweep populates it automatically.
