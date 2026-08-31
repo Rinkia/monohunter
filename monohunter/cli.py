@@ -536,7 +536,11 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
             step = len(stars) / args.sample
             tics = [int(stars[int(i * step)]["tic"]) for i in range(args.sample)]
-            grid, n_used = run_completeness_sample(tics, args.sector, n=args.n)
+
+            def _progress(i, total, tic, status):
+                print(f"  [{i}/{total}] TIC {tic}: {status}", flush=True)
+
+            grid, n_used = run_completeness_sample(tics, args.sector, n=args.n, progress=_progress)
             if grid is None:
                 print("No usable stars (all had their own signal or failed to fetch).")
                 return 0

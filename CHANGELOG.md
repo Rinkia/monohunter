@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.2
+
+- **`completeness --sample` now prints per-star progress** (`[i/N] TIC … used/skipped/
+  failed`) via a new `progress` callback on `run_completeness_sample`. The injection-
+  recovery survey is compute-heavy (stars × grid cells × injections full detect runs) and
+  was previously silent for its whole runtime; the progress line makes a long run
+  watchable and a stall visible.
+- **First published survey-sensitivity curve** — Sector 18 completeness (mean over 10
+  quiet stars) is committed as `completeness_s18.png` and embedded in the README: ~50%
+  complete at 2–3 ppt for long transits, ~90% by 5 ppt.
+
 ## 0.6.1
 
 - **`completeness --plot PNG`** renders the depth × duration recovery-fraction heatmap

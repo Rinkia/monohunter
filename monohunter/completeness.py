@@ -178,19 +178,33 @@ def mean_grid(grids: list[dict]) -> dict:
     return {k: float(np.nanmean([g[k] for g in grids])) for k in keys}
 
 
-def run_completeness_sample(tics, sector: int, n: int = 20, window_length: float = 3.0):
+def run_completeness_sample(tics, sector: int, n: int = 20, window_length: float = 3.0,
+                            progress=None):
     """SURVEY completeness: run injection-recovery on each of `tics` and average.
     Sensitivity varies with a star's noise, so one star is not the survey — the
     mean over a representative sample is. Skips stars with their own signal.
-    Returns (mean_grid, n_stars_used). Network."""
+    Returns (mean_grid, n_stars_used). Network.
+
+    progress: optional callback(i, total, tic, status) called after each star, where
+    status is "used" | "skipped (signal)" | "failed" — so a long run is watchable and
+    a wedge is visible instead of silent."""
     grids = []
-    for tic in tics:
+    total = len(tics)
+    for i, tic in enumerate(tics, 1):
+        status = "failed"
         try:
             grid, _epochs, clean = run_completeness(int(tic), sector, n=n, window_length=window_length)
+            if grid is not None and clean:
+                grids.append(grid)
+                status = "used"
+            elif grid is not None:
+                status = "skipped (signal)"
+            else:
+                status = "skipped (no data)"
         except Exception:
-            continue   # a slow/failed MAST fetch for one star must not sink the sample
-        if grid is not None and clean:
-            grids.append(grid)
+            status = "failed"   # a slow/failed MAST fetch for one star must not sink the sample
+        if progress is not None:
+            progress(i, total, int(tic), status)
     if not grids:
         return None, 0
     return mean_grid(grids), len(grids)

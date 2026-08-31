@@ -294,6 +294,24 @@ monohunter triage --candidates candidates              # ranks by P(worth vettin
 The vetting page exports labels as JSON; those labels train the triage model,
 which then puts the real finds at the top of the next sweep's queue.
 
+## Survey sensitivity (completeness)
+
+A find list without a sensitivity function is a hobby list; with one it is a survey.
+`completeness` injects synthetic box transits across a depth × duration grid into real
+light curves and runs the full detect pipeline on each, measuring the recovered
+fraction — what the survey would have caught, and what it would have missed.
+
+![Sector 18 completeness](completeness_s18.png)
+
+Sector 18, mean over 10 quiet stars: ~50% complete at **2–3 ppt** for long (12–24 h)
+transits and ~90% by **5 ppt**, while sub-1 ppt dips are largely missed. Reproduce (or
+plot your own sector) with:
+
+```bash
+monohunter completeness --sample 10 --catalog catalogs/sector18.csv --sector 18 \
+  --n 10 --plot completeness_s18.png
+```
+
 ## Community leaderboard (swarm)
 
 Submitted candidates are aggregated into one ranked list — deduped by

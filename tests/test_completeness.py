@@ -65,3 +65,27 @@ def test_completeness_depth_threshold():
     assert completeness_depth(grid, 12.0, 0.5) == 2.0     # first depth reaching 50%
     assert completeness_depth(grid, 12.0, 0.9) == 5.0
     assert completeness_depth(grid, 12.0, 0.99) is None   # never reached
+
+
+def test_sample_progress_callback_fires_per_star(monkeypatch):
+    """run_completeness_sample calls progress(i, total, tic, status) once per star,
+    so a long survey run is watchable. Offline via a stubbed run_completeness."""
+    import monohunter.completeness as C
+
+    def fake_run_completeness(tic, sector, n=20, window_length=3.0):
+        # tic 2 has its own signal (not clean); tic 3 has no data
+        if tic == 2:
+            return {("d", "u"): 1.0}, 15000, False
+        if tic == 3:
+            return None, 0, True
+        return {(1.0, 6.0): 0.5}, 15000, True
+
+    monkeypatch.setattr(C, "run_completeness", fake_run_completeness)
+    seen = []
+    grid, n_used = C.run_completeness_sample(
+        [1, 2, 3, 4], sector=18, n=5, progress=lambda i, t, tic, s: seen.append((i, tic, s))
+    )
+    assert [s[0] for s in seen] == [1, 2, 3, 4]              # one call per star, in order
+    assert seen[0][2] == "used" and seen[1][2] == "skipped (signal)"
+    assert seen[2][2] == "skipped (no data)"
+    assert n_used == 2                                        # tics 1 and 4 used
