@@ -27,6 +27,57 @@ def _btjd_to_date(btjd: float) -> str:
         return f"BTJD {btjd:.0f}"
 
 
+def _summarize_from_catalog(args) -> int:
+    """Batch-resummarize every (tic,sector) in a catalog CSV, in parallel.
+
+    Repopulates fields the CSV can't hold (e.g. subclass) from the light curves.
+    Downloads run in a thread pool; writes happen on the main thread as each future
+    lands (dir per-file, or locked append for a .jsonl outdir). Resumable for a dir
+    target (already-written stars skipped); per-TIC failures are counted, not fatal.
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    from .summary import load_summaries, run_summary, tics_from_catalog, write_summary
+
+    work = tics_from_catalog(args.from_catalog)
+    if not work:
+        print(f"No (tic,sector) rows in {args.from_catalog}.")
+        return 1
+
+    target = args.outdir
+    is_jsonl = str(target).endswith(".jsonl")
+    done: set[tuple[int, int]] = set()
+    if not is_jsonl:
+        done = {(int(r["tic"]), int(r["sector"])) for r in load_summaries(target)
+                if "tic" in r and "sector" in r}
+    todo = [ts for ts in work if ts not in done]
+    skip_note = f" ({len(done)} already present, skipped)" if done else ""
+    print(f"resummarize {len(todo)}/{len(work)} stars from {args.from_catalog} -> {target}{skip_note}")
+    if not todo:
+        return 0
+
+    def _one(ts: tuple[int, int]):
+        tic, sector = ts
+        try:
+            return ts, run_summary(tic, sectors=[sector]), None
+        except Exception as exc:  # transient MAST / bad star -> count, keep going
+            return ts, None, exc
+
+    n_ok = n_err = 0
+    with ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
+        futures = {pool.submit(_one, ts): ts for ts in todo}
+        for fut in as_completed(futures):
+            ts, summaries, err = fut.result()
+            if err is not None or not summaries:
+                n_err += 1
+                continue
+            for s in summaries:
+                write_summary(target, s)
+            n_ok += 1
+    print(f"done: {n_ok} summarized, {n_err} failed/empty (re-run to retry).")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="monohunter",
@@ -125,9 +176,19 @@ def main(argv: list[str] | None = None) -> int:
         help="per-star stellar summary from the same download: rotation, variability, "
         "flares, dipper (a catalog product, not just transit yes/no)",
     )
-    sm.add_argument("--tic", type=int, required=True, help="TESS Input Catalog id")
+    sm.add_argument("--tic", type=int, default=None, help="TESS Input Catalog id (single star)")
     sm.add_argument("--sectors", type=int, nargs="+", default=None, help="restrict to sectors")
-    sm.add_argument("--outdir", default="summaries", help="where to write summary JSON")
+    sm.add_argument(
+        "--from-catalog", default=None, metavar="CSV",
+        help="batch: resummarize every (tic,sector) in a catalog CSV — repopulates "
+        "fields the CSV can't hold (e.g. subclass) from the light curves. Resumable "
+        "when --outdir is a directory (already-written stars are skipped); a .jsonl "
+        "--outdir is one-shot (delete it before re-running to avoid duplicate rows).",
+    )
+    sm.add_argument("--workers", type=int, default=4,
+                    help="parallel MAST downloads for --from-catalog (network-bound; 4-8)")
+    sm.add_argument("--outdir", default="summaries", help="where to write summary JSON "
+                    "(a path ending in .jsonl appends one line per star to one file)")
 
     ct = sub.add_parser("catalog", help="aggregate stellar summaries into one CSV catalog")
     ct.add_argument("--summaries", default="summaries", help="dir of summary JSONs")
@@ -457,22 +518,25 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "summarize":
-        from .summary import run_summary
+        from .summary import run_summary, write_summary
 
+        if args.from_catalog:
+            return _summarize_from_catalog(args)
+
+        if args.tic is None:
+            print("Give --tic <id> (single star) or --from-catalog <CSV> (batch).")
+            return 1
         summaries = run_summary(args.tic, sectors=args.sectors)
         if not summaries:
             print(f"No light curves for TIC {args.tic}.")
             return 0
-        os.makedirs(args.outdir, exist_ok=True)
         for s in summaries:
-            path = os.path.join(args.outdir, f"tic{s.tic}_s{s.sector}.json")
-            with open(path, "w", encoding="utf-8") as fh:
-                fh.write(s.to_json(indent=2))
+            write_summary(args.outdir, s)
             rot = f"{s.rotation_period_d:.2f}d (power {s.rotation_power:.2f})" if s.rotation_period_d else (
                 "systematic" if s.rotation_systematic else "none")
             print(
-                f"S{s.sector}: {s.var_class} | amp {s.var_amplitude_ppt:.1f}ppt | "
-                f"rotation {rot} | {s.n_flares} flare(s) | dipper={s.is_dipper} -> {path}"
+                f"S{s.sector}: {s.var_class}/{s.subclass} | amp {s.var_amplitude_ppt:.1f}ppt | "
+                f"rotation {rot} | {s.n_flares} flare(s) | dipper={s.is_dipper}"
             )
         return 0
 

@@ -108,6 +108,8 @@ monohunter watch --sector N [--workers 3] [--ffi] [--summaries DIR] \
    [--csv-log sweeps/sectorN.csv] [--max-hours 4]   # <- the sweep tool (resumable)
 monohunter ffi-batch --tic <center> --sector N   # many stars, one cutout
 monohunter summarize --tic <id>                   # rotation/variability/flares/dipper
+monohunter summarize --from-catalog catalogs/sectorN.csv --outdir DIR --workers 4
+   # batch-resummarize a catalog's stars (repopulate subclass etc.); resumable on a dir
 monohunter catalog --summaries DIR --out csv      # parallel, pydantic-free
 monohunter catalog-page --csv catalogs/sectorN.csv --sector N --out _site/catalog.html
 monohunter ground --tic <id> --survey ztf|asassn  # variability cross-check
@@ -166,14 +168,16 @@ dataproduct_type='timeseries',sequence_number=N,t_exptime=120)`.
   ~half width) -> EB_RESID_FRAC=0.05 loosens period_from_transits vs sharp transits.
 
 ## Reference facts
-- Repo public. **PyPI: monohunter v0.5.0** (OIDC trusted publishing; releases cut by
+- Repo public. **PyPI: monohunter v0.5.1** (OIDC trusted publishing; releases cut by
   `git tag vX.Y.Z && git push` -> release.yml + docker.yml). Version history:
   v0.3.x = eb/rotation-plot/subclass/eclipse-merge; **v0.4.0** = watch-is-the-sweep-tool
   (`--csv-log` + auto-retry), triage generalized off S14 (schema v7), Gaia DR3 ρ*
   fallback, cross-sector EB periods, Colab quickstart + issue-form adoption;
   **v0.5.0** = Docker image + GHCR publish + 24/7 homelab compose watcher, `watch
   --max-hours` watchdog, Sector 18 catalog + vetted candidates. GHCR image:
-  `ghcr.io/rinkia/monohunter:{X.Y.Z,latest}` built on every v* tag.
+  `ghcr.io/rinkia/monohunter:{X.Y.Z,latest}` built on every v* tag. **v0.5.1** =
+  QoL CLI (summarize --from-catalog batch-resummarize, clean-cache, run/watch --dry-run,
+  .jsonl summaries, triage --top).
 - Leaderboard https://rinkia.github.io/monohunter/ + per-sector catalog pages
   (catalog_s15/16/17/18.html; catalog.html redirects to S15). pages.yml triggers on
   contributions/**, monohunter/swarm/**, catalog_page.py, catalogs/** and LOOPS every
@@ -286,9 +290,10 @@ Everything in v0.1.0 PLUS this session:
   survivors: every one is the residual edge/gap/scatter FP class (start-of-sector ramp,
   pre-gap scatter stripe, mid-gap flank). None promoted. TIC 120239458 = known deep EB.
   Nothing to contributions/. Confirms the skill's residual-FP prediction; don't re-vet.
-- **Repopulate subclass** on the S15/S16 catalogs — needs a fresh summary sweep
-  (subclass can't be recomputed from the CSV; it needs the light curves). Now that
-  v0.3.2 writes it on the sweep path, the next sweep populates it automatically.
+- **Repopulate subclass on S15/S16** — now tooled: `summarize --from-catalog
+  catalogs/sector15.csv --outdir DIR --workers 4` re-summarizes exactly those stars
+  (resumable on a dir), then `catalog --summaries DIR --out catalogs/sector15.csv` +
+  commit. Just needs the MAST headroom to run (~9k + 3.4k stars = hours).
 - Live SURVEY-completeness demo (needs MAST headroom, no competing sweep).
 - Gaia DR3 variability as a 2nd novelty source.
 - Non-SPOC FFI POOL enumeration for a true FFI sweep. astroplan observability gate

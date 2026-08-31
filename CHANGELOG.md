@@ -1,8 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.5.1
 
-Quality-of-life CLI fixes (no API change):
+Quality-of-life CLI release (no breaking API change):
+- **`summarize --from-catalog CSV`** — batch-resummarize every `(tic,sector)` in a
+  catalog CSV, in parallel (`--workers`). Repopulates fields the CSV can't hold (e.g.
+  `subclass`) from the light curves. Resumable when `--outdir` is a directory
+  (already-written stars skipped); per-star failures are counted, not fatal.
 - **`monohunter clean-cache`** — delete truncated partial FITS (exact-size download
   stubs) from the lightkurve cache in one command; a corrupt stub otherwise raises on
   read and can wedge a sweep. `--dry-run` lists first; `--cache-dir`/`--size` override.

@@ -8,7 +8,6 @@ a diagnostic PNG. This is the orchestration layer the CLI calls.
 from __future__ import annotations
 
 import os
-import threading
 
 import matplotlib
 
@@ -49,24 +48,14 @@ def _values(array: object) -> np.ndarray:
     return np.asarray(getattr(array, "value", array), dtype=float)
 
 
-# Serializes concurrent JSONL appends from parallel sweep workers (watch runs
-# run_target in a thread pool). ponytail: process-local lock, fine for a single-node
-# sweep; a multi-process sweep would need per-file OS locking.
-_SUMMARY_APPEND_LOCK = threading.Lock()
-
-
 def _write_summary(
     target: str, tic: int, sector: int, cadence_s: int,
     time: np.ndarray, raw_flux: np.ndarray, flat_flux: np.ndarray,
 ) -> None:
     """Summarize this sector's light curve (rotation/variability/flares/dipper) and
-    write it. Uses the SAME already-downloaded flux — no refetch.
-
-    ``target`` ending in ``.jsonl`` appends one compact line to that single file
-    (kills the thousands-of-tiny-files I/O cost on a big sweep); otherwise it's a
-    directory and one indented ``tic<id>_s<N>.json`` is written per star.
-    """
-    from .summary import StellarSummary, summarize
+    write it via summary.write_summary (dir per-file, or append when target is .jsonl).
+    Uses the SAME already-downloaded flux — no refetch."""
+    from .summary import StellarSummary, summarize, write_summary
 
     res = summarize(time, raw_flux, flat_flux)
     rec = StellarSummary(
@@ -78,18 +67,7 @@ def _write_summary(
         is_dipper=res.is_dipper, n_dips=res.n_dips, var_class=res.var_class,
         subclass=res.subclass,
     )
-    if str(target).endswith(".jsonl"):
-        parent = os.path.dirname(target)
-        if parent:
-            os.makedirs(parent, exist_ok=True)
-        line = rec.to_json() + "\n"        # compact, one record per line
-        with _SUMMARY_APPEND_LOCK:
-            with open(target, "a", encoding="utf-8") as fh:
-                fh.write(line)
-        return
-    os.makedirs(target, exist_ok=True)
-    with open(os.path.join(target, f"tic{tic}_s{sector}.json"), "w", encoding="utf-8") as fh:
-        fh.write(rec.to_json(indent=2))
+    write_summary(target, rec)
 
 
 def _save_plot(outdir: str, rec: FindRecord, time: np.ndarray, flux: np.ndarray) -> str:

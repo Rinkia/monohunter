@@ -20,6 +20,8 @@ orchestrator.
 
 from __future__ import annotations
 
+import os
+import threading
 from dataclasses import dataclass
 
 import numpy as np
@@ -208,6 +210,31 @@ class StellarSummary(BaseModel):
         return self.model_dump_json(**kwargs)
 
 
+# Serializes concurrent .jsonl appends from parallel sweep/batch workers.
+# ponytail: process-local lock, fine for a single-node run; a multi-process sweep
+# would need OS file locking.
+_SUMMARY_APPEND_LOCK = threading.Lock()
+
+
+def write_summary(target: str, rec: "StellarSummary") -> None:
+    """Persist one StellarSummary. ``target`` ending in ``.jsonl`` appends one compact
+    line to that single file (thread-safe, kills the thousands-of-tiny-files cost on a
+    big sweep); otherwise ``target`` is a directory and one indented
+    ``tic<id>_s<N>.json`` is written. Shared by the sweep, single, and batch paths."""
+    if str(target).endswith(".jsonl"):
+        parent = os.path.dirname(target)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        line = rec.to_json() + "\n"
+        with _SUMMARY_APPEND_LOCK:
+            with open(target, "a", encoding="utf-8") as fh:
+                fh.write(line)
+        return
+    os.makedirs(target, exist_ok=True)
+    with open(os.path.join(target, f"tic{rec.tic}_s{rec.sector}.json"), "w", encoding="utf-8") as fh:
+        fh.write(rec.to_json(indent=2))
+
+
 def _read_jsonl(path: str) -> list[dict]:
     """Each non-blank line of a .jsonl is one summary dict. Skips bad lines."""
     import json as _json
@@ -275,6 +302,26 @@ def write_catalog_csv(rows: list[dict], out_path: str) -> int:
         w.writeheader()
         w.writerows(rows)
     return len(rows)
+
+
+def tics_from_catalog(csv_path: str) -> list[tuple[int, int]]:
+    """Unique (tic, sector) pairs from a catalog CSV — the resummarize work-list.
+    Lets a fresh sweep repopulate fields (e.g. subclass) on exactly the catalog's
+    stars, which can't be recomputed from the CSV (they need the light curves)."""
+    import csv as _csv
+
+    seen: set[tuple[int, int]] = set()
+    out: list[tuple[int, int]] = []
+    with open(csv_path, encoding="utf-8") as fh:
+        for r in _csv.DictReader(fh):
+            try:
+                key = (int(r["tic"]), int(r["sector"]))
+            except (KeyError, ValueError, TypeError):
+                continue
+            if key not in seen:
+                seen.add(key)
+                out.append(key)
+    return out
 
 
 def run_summary(tic: int, sectors: list[int] | None = None, window_length: float | None = None):
