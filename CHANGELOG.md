@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.6.0
+
+Two new data sources for the discovery frontier.
+
+### Novelty — Gaia DR3 as a second source
+- **`novelty` now cross-checks Gaia DR3 variability** alongside VSX. A candidate is
+  called NOVEL only when it is unknown to BOTH catalogs; a hit in Gaia's
+  variability-classifier table (`I/358/vclassre`, which holds only variable sources)
+  reports the class (e.g. `RR`, `ECL`). Gaia is complementary, not a superset — it
+  catches faint variables VSX lacks, while VSX still catches very bright stars Gaia's
+  classifier excludes. `novelty.gaia_variability` / `gaia_novelty` are the new entry
+  points; degrades to "unknown" offline like the VSX path.
+
+### FFI — non-SPOC star-pool enumeration
+- **`monohunter ffi-pool`** enumerates the FFI-only star pool for a sky region of a
+  sector: every TIC in a cone (`--tic`/`--ra`/`--dec` + `--radius`, `--tmag-max`) that is
+  NOT in the sector's 2-min SPOC pool — the stars a normal sweep never reaches. Writes a
+  TIC list.
+- **`watch --target-pool FILE`** scans an explicit TIC list instead of the SPOC pool, so
+  `watch --ffi --target-pool ffi_pool.txt` runs a true FFI sweep. `--dry-run` reports
+  against the supplied pool too. (Enumeration is over-inclusive — a region star isn't
+  guaranteed on-silicon; misses yield no cutout and are skipped. A precise footprint
+  check is the upgrade.)
+
 ## 0.5.2
 
 The follow-up-planning release.

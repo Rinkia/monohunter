@@ -133,6 +133,32 @@ def dedup_blends(detections: list[BatchDetection]) -> tuple[list[BatchDetection]
     return primaries, blended
 
 
+def _non_spoc(cone_tics: list[int], spoc_tics: set[int]) -> list[int]:
+    """The FFI-only pool: catalog stars in the region that have NO 2-min SPOC light
+    curve (those are already covered by the fast SPOC path). Pure set difference."""
+    return sorted(set(int(t) for t in cone_tics) - {int(t) for t in spoc_tics})
+
+
+def ffi_star_pool(
+    sector: int, ra_deg: float, dec_deg: float, radius_deg: float,
+    tmag_max: float = DEFAULT_TMAG_MAX,
+) -> list[int]:
+    """Enumerate the non-SPOC FFI star pool for a sky region of a sector: every TIC in
+    the cone brighter than tmag_max that is NOT in the sector's 2-min SPOC pool. Feed
+    the result to `watch --ffi --target-pool` for a true FFI sweep. Network.
+
+    ponytail: over-inclusive — a catalog star in the region isn't guaranteed on-silicon
+    for the sector, but a miss just yields no cutout and is skipped by the pipeline. A
+    precise footprint check (tesswcs / the sector's camera-CCD WCS) is the upgrade.
+    """
+    from .fetch import tic_cone
+    from .watch import sector_targets
+
+    cone = tic_cone(ra_deg, dec_deg, radius_deg, tmag_max=tmag_max)
+    spoc = set(sector_targets(sector))
+    return _non_spoc(cone, spoc)
+
+
 def run_ffi_batch(
     center_tic: int,
     sector: int,

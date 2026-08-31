@@ -14,7 +14,12 @@ _nearest is pure and unit-tested; vsx_match / check_novelty hit the network.
 from __future__ import annotations
 
 _VSX_CATALOG = "B/vsx/vsx"
+# Gaia DR3 variability classification (vari_classifier_result): this Vizier table
+# contains ONLY sources Gaia flagged variable, each with a Class — so a cone hit is
+# a second, independent "already a known variable" signal beyond VSX.
+_GAIA_VARI_CATALOG = "I/358/vclassre"
 _CACHE: dict[int, dict | None] = {}
+_GAIA_CACHE: dict[int, dict | None] = {}
 
 
 def _nearest(candidates: list[dict]) -> dict | None:
@@ -60,6 +65,39 @@ def vsx_match(ra: float, dec: float, radius_arcsec: float = 10.0) -> dict | None
         return None
 
 
+def gaia_variability(ra: float, dec: float, radius_arcsec: float = 10.0) -> dict | None:
+    """Nearest Gaia DR3 classified-variable source within radius, or None. Network.
+
+    Returns {source_id, class, sep_arcsec}. Because the classifier table holds only
+    variable sources, any match means Gaia independently flags the star as variable —
+    a candidate that clears VSX may still be caught here."""
+    try:
+        import astropy.units as u
+        from astropy.coordinates import SkyCoord
+        from astroquery.vizier import Vizier
+
+        center = SkyCoord(ra, dec, unit="deg")
+        res = Vizier(columns=["Source", "Class", "_RAJ2000", "_DEJ2000"]).query_region(
+            center, radius=radius_arcsec * u.arcsec, catalog=_GAIA_VARI_CATALOG
+        )
+        if not res or len(res) == 0 or len(res[0]) == 0:
+            return None
+        cands: list[dict] = []
+        for row in res[0]:
+            try:
+                c = SkyCoord(float(row["_RAJ2000"]), float(row["_DEJ2000"]), unit="deg")
+                cands.append({
+                    "source_id": str(row["Source"]).strip(),
+                    "class": str(row["Class"]).strip(),
+                    "sep_arcsec": float(center.separation(c).arcsec),
+                })
+            except Exception:
+                continue
+        return _nearest(cands)
+    except Exception:
+        return None
+
+
 def check_novelty(tic: int) -> dict | None:
     """Resolve a TIC to coordinates and VSX-match it. Cached; None = not in VSX
     (or offline). Network."""
@@ -76,4 +114,18 @@ def check_novelty(tic: int) -> dict | None:
     except Exception:
         result = None
     _CACHE[tic] = result
+    return result
+
+
+def gaia_novelty(tic: int) -> dict | None:
+    """Resolve a TIC to coordinates and Gaia-variability-match it. Cached; None = not
+    a Gaia-classified variable (or offline). Network."""
+    tic = int(tic)
+    if tic in _GAIA_CACHE:
+        return _GAIA_CACHE[tic]
+    from .fetch import fetch_coords
+
+    ra, dec = fetch_coords(tic)
+    result = gaia_variability(ra, dec) if ra is not None else None
+    _GAIA_CACHE[tic] = result
     return result

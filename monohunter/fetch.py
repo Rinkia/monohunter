@@ -307,6 +307,27 @@ def iter_lightcurves(
         yield row, lc
 
 
+def tic_cone(
+    ra_deg: float, dec_deg: float, radius_deg: float, tmag_max: float = 16.0
+) -> list[int]:
+    """TIC ids within radius_deg of (ra, dec) brighter than tmag_max. Network; [] on
+    failure. Used to enumerate the FFI star pool (catalog stars in a sky region)."""
+    try:
+        import astropy.units as u
+        from astropy.coordinates import SkyCoord
+        from astroquery.mast import Catalogs
+
+        res = Catalogs.query_criteria(
+            catalog="TIC",
+            coordinates=SkyCoord(ra_deg, dec_deg, unit="deg"),
+            radius=radius_deg * u.deg,
+            Tmag=[-99, tmag_max],
+        )
+        return sorted({int(t) for t in res["ID"]})
+    except Exception:
+        return []
+
+
 def fetch_coords(tic: int) -> tuple[float | None, float | None]:
     """(ra_deg, dec_deg) J2000 for a TIC from the MAST TIC catalog, or (None, None).
     Network — used by the observability command to place the target on the sky."""

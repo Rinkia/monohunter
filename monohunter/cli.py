@@ -296,6 +296,24 @@ def main(argv: list[str] | None = None) -> int:
         help="report the sector's target-pool size, how many are already done, and "
         "how many this run would scan — then exit (no download). Sanity before a sweep.",
     )
+    wat.add_argument(
+        "--target-pool", default=None, metavar="FILE",
+        help="scan the TIC ids in this file (one per line) instead of the sector's "
+        "2-min SPOC pool — e.g. an ffi-pool list, with --ffi, for a true FFI sweep",
+    )
+
+    fp = sub.add_parser(
+        "ffi-pool",
+        help="enumerate the non-SPOC FFI star pool for a sky region of a sector "
+        "(catalog stars with no 2-min light curve) — feed to watch --ffi --target-pool",
+    )
+    fp.add_argument("--sector", type=int, required=True, help="sector to exclude the SPOC pool of")
+    fp.add_argument("--tic", type=int, default=None, help="center on this TIC's RA/Dec")
+    fp.add_argument("--ra", type=float, default=None, help="region center RA deg (or use --tic)")
+    fp.add_argument("--dec", type=float, default=None, help="region center Dec deg")
+    fp.add_argument("--radius", type=float, default=0.2, help="cone radius deg (keep small)")
+    fp.add_argument("--tmag-max", type=float, default=14.0, help="skip stars fainter than this")
+    fp.add_argument("--out", default="ffi_pool.txt", help="output TIC list (one per line)")
 
     cc = sub.add_parser(
         "clean-cache",
@@ -389,13 +407,21 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "novelty":
-        from .novelty import check_novelty
+        from .novelty import check_novelty, gaia_novelty
 
-        def _fmt(m):
+        def _fmt(m, g):
+            parts = []
             if m is None:
-                return "not in VSX (novel)"
-            p = f", P={m['period']:.3f}d" if m.get("period") else ""
-            return f"KNOWN: VSX {m['name']} ({m['type']}{p}, {m['sep_arcsec']:.1f}\")"
+                parts.append("not in VSX")
+            else:
+                p = f", P={m['period']:.3f}d" if m.get("period") else ""
+                parts.append(f"VSX {m['name']} ({m['type']}{p}, {m['sep_arcsec']:.1f}\")")
+            if g is None:
+                parts.append("not a Gaia variable")
+            else:
+                parts.append(f"Gaia variable {g['class']} ({g['sep_arcsec']:.1f}\")")
+            verdict = "NOVEL" if (m is None and g is None) else "KNOWN"
+            return f"{verdict}: " + "; ".join(parts)
 
         if args.candidates:
             import json as _json
@@ -408,16 +434,16 @@ def main(argv: list[str] | None = None) -> int:
                     continue
             novel = 0
             for tic in sorted(set(tics)):
-                m = check_novelty(tic)
-                novel += m is None
-                print(f"TIC {tic}: {_fmt(m)}")
-            print(f"\n{novel}/{len(set(tics))} not in VSX (candidate discoveries).")
+                m, g = check_novelty(tic), gaia_novelty(tic)
+                novel += m is None and g is None
+                print(f"TIC {tic}: {_fmt(m, g)}")
+            print(f"\n{novel}/{len(set(tics))} unknown to BOTH VSX and Gaia (candidate discoveries).")
             return 0
 
         if args.tic is None:
             print("Give --tic <id> or --candidates <dir>.")
             return 1
-        print(f"TIC {args.tic}: {_fmt(check_novelty(args.tic))}")
+        print(f"TIC {args.tic}: {_fmt(check_novelty(args.tic), gaia_novelty(args.tic))}")
         return 0
 
     if args.cmd == "ground":
@@ -718,16 +744,20 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"Could not detect a sector with data from hint {args.hint}.")
                 return 1
             print(f"auto-detected newest sector: {sector}")
+        pool = None
+        if args.target_pool:
+            pool = [int(x) for x in Path(args.target_pool).read_text().split() if x.strip()]
         if args.dry_run:
             from .watch import load_state, pending_targets, sector_targets
 
-            tics = sector_targets(sector)
+            tics = pool if pool is not None else sector_targets(sector)
+            label = "target-pool" if pool is not None else "SPOC"
             state = load_state(args.state)
             remaining = pending_targets(state, sector, tics, None)
             this_run = pending_targets(state, sector, tics, args.max)
             done = len(tics) - len(remaining)
             print(
-                f"sector {sector}: pool {len(tics)} SPOC targets, {done} done, "
+                f"sector {sector}: pool {len(tics)} {label} targets, {done} done, "
                 f"{len(remaining)} remaining; this run would scan {len(this_run)} "
                 f"(--max {args.max})."
             )
@@ -737,6 +767,7 @@ def main(argv: list[str] | None = None) -> int:
             outdir=args.out,
             state_path=args.state,
             max_targets=args.max,
+            target_pool=pool,
             source="ffi" if args.ffi else "spoc",
             workers=args.workers,
             summaries_dir=args.summaries,
@@ -768,6 +799,29 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         n, freed = clean_cache(cache, size, dry_run=False)
         print(f"deleted {n} partial FITS, freed {freed / 1024:.0f} KiB from {cache}.")
+        return 0
+
+    if args.cmd == "ffi-pool":
+        from .ffi_batch import ffi_star_pool
+
+        ra, dec = args.ra, args.dec
+        if ra is None or dec is None:
+            if args.tic is None:
+                print("Give --ra/--dec or --tic for the region center.")
+                return 1
+            from .fetch import fetch_coords
+
+            ra, dec = fetch_coords(int(args.tic))
+            if ra is None:
+                print(f"Could not fetch coordinates for TIC {args.tic}.")
+                return 1
+        pool = ffi_star_pool(args.sector, ra, dec, args.radius, tmag_max=args.tmag_max)
+        Path(args.out).write_text("\n".join(str(t) for t in pool) + "\n", encoding="utf-8")
+        print(
+            f"S{args.sector} FFI pool around RA {ra:.4f} Dec {dec:.4f} r={args.radius}deg: "
+            f"{len(pool)} non-SPOC stars -> {args.out}\n"
+            f"sweep them: monohunter watch --sector {args.sector} --ffi --target-pool {args.out}"
+        )
         return 0
 
     if args.cmd == "observe":
