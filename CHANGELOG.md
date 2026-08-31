@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+Quality-of-life CLI fixes (no API change):
+- **`monohunter clean-cache`** — delete truncated partial FITS (exact-size download
+  stubs) from the lightkurve cache in one command; a corrupt stub otherwise raises on
+  read and can wedge a sweep. `--dry-run` lists first; `--cache-dir`/`--size` override.
+- **`run --dry-run`** lists the sectors available for a TIC, and **`watch --dry-run`**
+  reports the sector's target-pool size, how many are done, and how many this run would
+  scan — a sanity check before a long sweep, no download.
+- **`--summaries …​.jsonl`** — a summaries path ending in `.jsonl` appends one line per
+  star to a single file instead of a directory of thousands of tiny JSONs (kills the
+  cold-disk per-file open cost when building a catalog). `catalog`/`load_summaries` read
+  a `.jsonl` file or a dir containing one.
+- **`triage --top N`** — show only the N highest-ranked candidates (the vetting short-list).
+
 ## 0.5.0
 
 The always-on deployment release.

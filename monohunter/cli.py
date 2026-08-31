@@ -41,6 +41,10 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--outdir", default="candidates", help="where to write JSON + PNG")
     run.add_argument("--no-plot", action="store_true", help="skip PNG generation")
     run.add_argument(
+        "--dry-run", action="store_true",
+        help="list the sectors available for this TIC and exit (no download/detect)",
+    )
+    run.add_argument(
         "--sectors",
         type=int,
         nargs="+",
@@ -56,7 +60,9 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument(
         "--summaries", default=None, metavar="DIR",
         help="also write a stellar summary (rotation/variability/flares/dipper) per "
-        "sector here — a catalog product from the same download",
+        "sector here — a catalog product from the same download. A path ending in "
+        ".jsonl appends one line per star to that single file instead of a dir of "
+        "many small JSONs (faster to build a catalog from on a big sweep).",
     )
 
     ano = sub.add_parser(
@@ -160,6 +166,8 @@ def main(argv: list[str] | None = None) -> int:
     tr.add_argument("--candidates", required=True, help="dir of candidate record JSONs")
     tr.add_argument("--min-prob", type=float, default=0.0, metavar="P",
                     help="only show candidates scoring >= P (auto-cut the junk tail)")
+    tr.add_argument("--top", type=int, default=None, metavar="N",
+                    help="show only the N highest-ranked candidates (the vetting short-list)")
 
     vet = sub.add_parser(
         "vet", help="build a static crowd-vetting page (candidate PNGs + label buttons)"
@@ -207,7 +215,8 @@ def main(argv: list[str] | None = None) -> int:
     wat.add_argument(
         "--summaries", default=None, metavar="DIR",
         help="also write a stellar summary per scanned star here (rotation/"
-        "variability catalog from the same downloads)",
+        "variability catalog from the same downloads). A path ending in .jsonl appends "
+        "one line per star to a single file — one open, not thousands of tiny files.",
     )
     wat.add_argument(
         "--csv-log", default=None, metavar="CSV",
@@ -221,10 +230,40 @@ def main(argv: list[str] | None = None) -> int:
         "can wedge a worker forever). Resumable — re-run to continue. Set a bit above "
         "the expected runtime (e.g. 5 for a ~4h sweep).",
     )
+    wat.add_argument(
+        "--dry-run", action="store_true",
+        help="report the sector's target-pool size, how many are already done, and "
+        "how many this run would scan — then exit (no download). Sanity before a sweep.",
+    )
+
+    cc = sub.add_parser(
+        "clean-cache",
+        help="delete truncated partial FITS (exact-size download stubs) from the "
+        "lightkurve cache — a corrupt stub raises on read and can wedge a sweep",
+    )
+    cc.add_argument("--cache-dir", default=None,
+                    help="cache root (default: lightkurve's own download cache)")
+    cc.add_argument("--size", type=int, default=None, metavar="BYTES",
+                    help="exact byte size of the partial stub to delete (default 65536)")
+    cc.add_argument("--dry-run", action="store_true",
+                    help="list what would be deleted, delete nothing")
 
     args = parser.parse_args(argv)
 
     if args.cmd == "run":
+        if args.dry_run:
+            if args.ffi:
+                from .fetch import search_tesscut
+                _sr, rows = search_tesscut(args.tic, sectors=set(args.sectors) if args.sectors else None)
+            else:
+                from .fetch import search_tess
+                _sr, rows = search_tess(args.tic)
+                if args.sectors:
+                    rows = [r for r in rows if int(r["sector"]) in set(args.sectors)]
+            secs = sorted({int(r["sector"]) for r in rows})
+            src = "FFI" if args.ffi else "SPOC"
+            print(f"TIC {args.tic}: {len(secs)} {src} sector(s) available: {secs or '(none)'}")
+            return 0
         records = run_target(
             args.tic,
             window_length=args.window,
@@ -552,7 +591,13 @@ def main(argv: list[str] | None = None) -> int:
         ranked = rank_candidates(model, args.candidates)
         shown = [r for r in ranked if r[2] >= args.min_prob]
         cut = len(ranked) - len(shown)
-        note = f" ({cut} below P={args.min_prob:.2f} hidden)" if cut else ""
+        notes = []
+        if cut:
+            notes.append(f"{cut} below P={args.min_prob:.2f}")
+        if args.top is not None and len(shown) > args.top:
+            notes.append(f"top {args.top} of {len(shown)}")
+            shown = shown[:args.top]
+        note = f" ({'; '.join(notes)})" if notes else ""
         print(f"{len(shown)}/{len(ranked)} candidate(s) by P(worth vetting){note}:")
         for tic, sector, p in shown:
             print(f"  P={p:.2f}  TIC {tic} S{sector}")
@@ -588,6 +633,20 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"Could not detect a sector with data from hint {args.hint}.")
                 return 1
             print(f"auto-detected newest sector: {sector}")
+        if args.dry_run:
+            from .watch import load_state, pending_targets, sector_targets
+
+            tics = sector_targets(sector)
+            state = load_state(args.state)
+            remaining = pending_targets(state, sector, tics, None)
+            this_run = pending_targets(state, sector, tics, args.max)
+            done = len(tics) - len(remaining)
+            print(
+                f"sector {sector}: pool {len(tics)} SPOC targets, {done} done, "
+                f"{len(remaining)} remaining; this run would scan {len(this_run)} "
+                f"(--max {args.max})."
+            )
+            return 0
         res = watch(
             sector,
             outdir=args.out,
@@ -606,6 +665,24 @@ def main(argv: list[str] | None = None) -> int:
         )
         for rec in sorted(res.novel, key=lambda r: -r.snr):
             print(f"  NOVEL TIC {rec.tic} S{rec.sector} SNR {rec.snr:.0f} depth {rec.depth_ppt:.2f}ppt")
+        return 0
+
+    if args.cmd == "clean-cache":
+        from .fetch import CORRUPT_FITS_SIZE, clean_cache, default_cache_dir, find_corrupt_fits
+
+        cache = Path(args.cache_dir) if args.cache_dir else default_cache_dir()
+        size = args.size if args.size is not None else CORRUPT_FITS_SIZE
+        hits = find_corrupt_fits(cache, size)
+        if not hits:
+            print(f"No {size}-byte partial FITS under {cache}.")
+            return 0
+        if args.dry_run:
+            for p in hits:
+                print(f"  would delete {p}")
+            print(f"{len(hits)} file(s), {len(hits) * size / 1024:.0f} KiB (dry-run; nothing deleted).")
+            return 0
+        n, freed = clean_cache(cache, size, dry_run=False)
+        print(f"deleted {n} partial FITS, freed {freed / 1024:.0f} KiB from {cache}.")
         return 0
 
     return 1

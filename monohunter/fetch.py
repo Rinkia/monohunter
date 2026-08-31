@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import re
 import socket
+from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator, Mapping, TypeVar
 
 import numpy as np
@@ -304,3 +305,55 @@ def iter_lightcurves(
         if lc is None:          # truncated/failed download -> skip this sector
             continue
         yield row, lc
+
+
+# ---- download-cache hygiene ----------------------------------------------
+# An interrupted MAST download leaves a truncated partial FITS in lightkurve's
+# cache; on the next read it raises LightkurveError (not a clean re-fetch), so a
+# corrupt stub can wedge a sweep until removed by hand. These stubs come out at an
+# exact byte size (classically a 64 KiB stub), so an exact-size sweep of *.fits is
+# a safe, targeted clean — see the pitfall in .skill/SKILL.md.
+CORRUPT_FITS_SIZE = 65536  # bytes — the partial-download stub size seen in the wild
+
+
+def default_cache_dir() -> Path:
+    """Best-effort lightkurve download-cache root (override in the CLI if wrong)."""
+    try:
+        from lightkurve.config import get_cache_dir
+
+        return Path(get_cache_dir())
+    except Exception:
+        return Path.home() / ".cache" / "lightkurve"
+
+
+def find_corrupt_fits(cache_dir: str | Path, size_bytes: int = CORRUPT_FITS_SIZE) -> list[Path]:
+    """*.fits files under cache_dir of EXACTLY size_bytes (truncated partials)."""
+    root = Path(cache_dir)
+    if not root.exists():
+        return []
+    hits: list[Path] = []
+    for p in root.rglob("*.fits"):
+        try:
+            if p.is_file() and p.stat().st_size == size_bytes:
+                hits.append(p)
+        except OSError:
+            continue
+    return sorted(hits)
+
+
+def clean_cache(
+    cache_dir: str | Path, size_bytes: int = CORRUPT_FITS_SIZE, dry_run: bool = False
+) -> tuple[int, int]:
+    """Delete exact-size partial FITS from the cache. Returns (n_files, bytes_freed).
+    dry_run reports what would go without touching anything."""
+    hits = find_corrupt_fits(cache_dir, size_bytes)
+    if dry_run:
+        return len(hits), len(hits) * size_bytes
+    freed = 0
+    for p in hits:
+        try:
+            p.unlink()
+            freed += size_bytes
+        except OSError:
+            continue
+    return len(hits), freed

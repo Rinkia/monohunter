@@ -208,18 +208,44 @@ class StellarSummary(BaseModel):
         return self.model_dump_json(**kwargs)
 
 
-def load_summaries(summaries_dir: str, workers: int = 16) -> list[dict]:
-    """Read every summary JSON in a dir as a plain dict, in parallel.
+def _read_jsonl(path: str) -> list[dict]:
+    """Each non-blank line of a .jsonl is one summary dict. Skips bad lines."""
+    import json as _json
 
-    Building a catalog means opening thousands of tiny files; that's I/O-bound
-    (cold-disk per-file open dominates, ~45 ms/file on Windows), so parallel reads
-    overlap the latency. No pydantic — these are trusted, self-written records, so
-    validating each on the way to a CSV is wasted work.
+    rows: list[dict] = []
+    try:
+        with open(path, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rows.append(_json.loads(line))
+                except Exception:
+                    continue
+    except Exception:
+        pass
+    return rows
+
+
+def load_summaries(summaries_dir: str, workers: int = 16) -> list[dict]:
+    """Read summary records as plain dicts. Accepts either a directory of per-star
+    ``*.json`` files (parallel reads) or a single ``*.jsonl`` sweep file; a directory
+    is scanned for BOTH so a mixed sweep still loads whole.
+
+    Building a catalog from per-file summaries is I/O-bound (cold-disk per-file open
+    dominates, ~45 ms/file on Windows), so parallel reads overlap the latency — but a
+    ``.jsonl`` sweep sidesteps the thousands-of-small-files cost entirely (one file,
+    one open). No pydantic — these are trusted, self-written records.
     """
     import glob
     import json as _json
     from concurrent.futures import ThreadPoolExecutor
     from pathlib import Path
+
+    # A direct .jsonl file path: read it and we're done.
+    if str(summaries_dir).endswith(".jsonl"):
+        return _read_jsonl(str(summaries_dir))
 
     files = sorted(glob.glob(str(Path(summaries_dir) / "*.json")))
 
@@ -231,7 +257,12 @@ def load_summaries(summaries_dir: str, workers: int = 16) -> list[dict]:
             return None
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        return [r for r in pool.map(_one, files) if r is not None]
+        rows = [r for r in pool.map(_one, files) if r is not None]
+
+    # Plus any JSONL sweep files sitting in the same dir.
+    for jl in sorted(glob.glob(str(Path(summaries_dir) / "*.jsonl"))):
+        rows.extend(_read_jsonl(jl))
+    return rows
 
 
 def write_catalog_csv(rows: list[dict], out_path: str) -> int:
