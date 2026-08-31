@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.2
+
+The follow-up-planning release.
+
+### Observability
+- **`monohunter observe`** — turn a predicted next-transit window into concrete
+  "target up + sky dark" clock-time intervals for an observer's latitude/longitude, so
+  an amateur knows whether and *when* to point. Takes `--ra/--dec` or a `--tic`
+  (RA/Dec fetched from MAST), and a window from `--start/--end` (ISO UTC or raw BTJD) or
+  straight from a candidate record's next-transit window via `--record`. Tunable
+  `--min-alt` and `--sun-alt` (−18 astronomical / −12 nautical). Astropy only — no new
+  dependency. Reports each dark-and-up interval in UTC plus the total observable hours.
+
 ## 0.5.1
 
 Quality-of-life CLI release (no breaking API change):

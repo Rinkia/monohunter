@@ -309,6 +309,27 @@ def main(argv: list[str] | None = None) -> int:
     cc.add_argument("--dry-run", action="store_true",
                     help="list what would be deleted, delete nothing")
 
+    ob = sub.add_parser(
+        "observe",
+        help="is a predicted transit catchable from your site? Turn a next-transit "
+        "window into 'target up + sky dark' clock-time intervals for a lat/lon",
+    )
+    ob.add_argument("--tic", type=int, default=None,
+                    help="fetch the target's RA/Dec from MAST (or give --ra/--dec)")
+    ob.add_argument("--ra", type=float, default=None, help="target RA deg (skip the MAST lookup)")
+    ob.add_argument("--dec", type=float, default=None, help="target Dec deg")
+    ob.add_argument("--record", default=None, metavar="JSON",
+                    help="a candidate record JSON — pulls its TIC + next-transit window")
+    ob.add_argument("--start", default=None, help="window start (ISO UTC or a raw BTJD float)")
+    ob.add_argument("--end", default=None, help="window end (ISO UTC or a raw BTJD float)")
+    ob.add_argument("--lat", type=float, required=True, help="observer latitude deg (+N)")
+    ob.add_argument("--lon", type=float, required=True, help="observer longitude deg (+E)")
+    ob.add_argument("--elev", type=float, default=0.0, help="observer elevation m")
+    ob.add_argument("--min-alt", type=float, default=30.0, help="minimum target altitude deg")
+    ob.add_argument("--sun-alt", type=float, default=-18.0,
+                    help="Sun below this altitude deg = dark (-18 astronomical, -12 nautical)")
+    ob.add_argument("--step", type=float, default=10.0, help="sampling step minutes")
+
     args = parser.parse_args(argv)
 
     if args.cmd == "run":
@@ -749,7 +770,75 @@ def main(argv: list[str] | None = None) -> int:
         print(f"deleted {n} partial FITS, freed {freed / 1024:.0f} KiB from {cache}.")
         return 0
 
+    if args.cmd == "observe":
+        return _observe(args)
+
     return 1
+
+
+def _parse_time_to_btjd(s: str) -> float:
+    """A raw BTJD float passes through; anything else is parsed as an ISO UTC time."""
+    try:
+        return float(s)
+    except ValueError:
+        from astropy.time import Time
+
+        from .observability import _BTJD_OFFSET
+
+        return float(Time(s, scale="utc").tdb.jd) - _BTJD_OFFSET
+
+
+def _observe(args) -> int:
+    import json as _json
+
+    from .observability import btjd_to_utc_iso, interval_hours, observable_windows
+
+    # --- target coordinates: explicit --ra/--dec, else a TIC (from --record or --tic) ---
+    ra, dec = args.ra, args.dec
+    tic = args.tic
+    window = None
+    if args.record:
+        rec = _json.loads(Path(args.record).read_text(encoding="utf-8"))
+        tic = tic or rec.get("tic")
+        window = rec.get("next_window_btjd")
+    if (ra is None or dec is None):
+        if tic is None:
+            print("Give --ra/--dec, or --tic/--record so the RA/Dec can be looked up.")
+            return 1
+        from .fetch import fetch_coords
+
+        ra, dec = fetch_coords(int(tic))
+        if ra is None:
+            print(f"Could not fetch coordinates for TIC {tic}.")
+            return 1
+
+    # --- window: explicit --start/--end, else the record's next-transit window ---
+    if args.start and args.end:
+        t0, t1 = _parse_time_to_btjd(args.start), _parse_time_to_btjd(args.end)
+    elif window:
+        t0, t1 = float(window[0]), float(window[-1])   # [5%, ..., 95%] -> full span
+    else:
+        print("Give --start and --end, or --record with a next-transit window.")
+        return 1
+
+    ivals = observable_windows(
+        ra, dec, t0, t1, args.lat, args.lon,
+        elevation_m=args.elev, min_alt_deg=args.min_alt,
+        sun_alt_deg=args.sun_alt, step_min=args.step,
+    )
+    who = f"TIC {tic}" if tic else f"RA {ra:.4f} Dec {dec:.4f}"
+    print(
+        f"{who} at lat {args.lat:+.2f} lon {args.lon:+.2f}: window "
+        f"{btjd_to_utc_iso(t0)} -> {btjd_to_utc_iso(t1)}, "
+        f"alt>={args.min_alt:.0f} & Sun<={args.sun_alt:.0f}:"
+    )
+    if not ivals:
+        print("  not observable — target never both up and dark during the window.")
+        return 0
+    for a, b in ivals:
+        print(f"  {btjd_to_utc_iso(a)} -> {btjd_to_utc_iso(b)}  ({(b - a) * 24:.1f}h)")
+    print(f"  total observable: {interval_hours(ivals):.1f}h across {len(ivals)} window(s).")
+    return 0
 
 
 if __name__ == "__main__":

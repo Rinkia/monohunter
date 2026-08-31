@@ -124,6 +124,8 @@ monohunter clean-cache [--dry-run]                # delete truncated partial FIT
 monohunter run --tic <id> --dry-run               # list available sectors, no download
 monohunter watch --sector N --dry-run             # pool size + done/remaining, no download
 monohunter triage --candidates DIR --top 10       # vetting short-list (N highest-ranked)
+monohunter summarize --from-catalog catalogs/sectorN.csv --outdir DIR --workers 4  # repopulate subclass
+monohunter observe --record REC.json --lat L --lon G  # next-transit -> up+dark clock windows
 # release: bump pyproject.toml + monohunter/__init__.py + CHANGELOG.md
 git tag vX.Y.Z && git push origin vX.Y.Z    # -> release.yml (PyPI OIDC) + docker.yml (GHCR)
 # 24/7 deploy: docker compose up -d   (restart:always watcher on newest sector, ./data volume)

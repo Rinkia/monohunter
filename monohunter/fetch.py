@@ -307,6 +307,20 @@ def iter_lightcurves(
         yield row, lc
 
 
+def fetch_coords(tic: int) -> tuple[float | None, float | None]:
+    """(ra_deg, dec_deg) J2000 for a TIC from the MAST TIC catalog, or (None, None).
+    Network — used by the observability command to place the target on the sky."""
+    try:
+        from astroquery.mast import Catalogs
+
+        res = Catalogs.query_criteria(catalog="TIC", ID=int(tic))
+        if len(res) == 0:
+            return None, None
+        return float(res["ra"][0]), float(res["dec"][0])
+    except Exception:
+        return None, None
+
+
 # ---- download-cache hygiene ----------------------------------------------
 # An interrupted MAST download leaves a truncated partial FITS in lightkurve's
 # cache; on the next read it raises LightkurveError (not a clean re-fetch), so a
