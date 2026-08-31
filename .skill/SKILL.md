@@ -86,23 +86,26 @@ systematic times. Human PNG-vetting is the backstop. Do NOT add sector-specific
 guards (overfit). Triage now ranks survivors so vetting goes to the real ones.
 
 ## Conventions
-- **SCHEMA_VERSION v6** (v5 = n_sectors_observed+recurring_dip; v6 = measured_period_d,
-  n_transits_used). Additive optional only; old records still load.
+- **SCHEMA_VERSION v7** (v5 = n_sectors_observed+recurring_dip; v6 = measured_period_d,
+  n_transits_used; v7 = edge_gap_dist_d + baseline_scatter_ppt, the FP features that
+  generalize triage off the S14 hardcode). Additive optional only; old records still load.
 - **SUMMARY schema v2** (v2 = subclass: eclipsing|pulsator|rotator refinement via
   periodogram harmonics + eclipse shape). Additive; old catalogs still load.
 - Tests: REALISTIC sector-length curves (~15000 cadences). Wide dips for the box
   (>=2h). One runnable check per non-trivial logic; guards get a regression test.
 - Commits: conventional, terse body, Co-Authored-By line. Every change: pytest -q
-  then commit+push. ~113 tests + 1 slow.
-- Sweep scripts live in scratchpad (not repo): resumable CSV + survivors.txt,
-  ThreadPoolExecutor(workers 3), summaries_dir=, PRIORS exclude prior sweeps,
-  os.chdir(REPO), write results to a FILE not stdout (bg stdout gets closed).
+  then commit+push. ~135 tests + 1 slow (full run ~3.5min).
+- **Sweeps are now a first-class command, not scratchpad scripts:** `watch --csv-log`
+  writes the resumable per-star status CSV (errored stars left un-processed so a re-run
+  retries only failures); `--max-hours` is a watchdog that force-exits a wedged run.
+  One reproducible command replaces the old ThreadPoolExecutor sweep scripts.
 
 ## Commands
 ```bash
 .venv/Scripts/python.exe -m pytest -q            # offline
 monohunter run --tic <id> [--sectors N] [--ffi] [--summaries DIR]
-monohunter watch --sector N [--workers 3] [--ffi] [--summaries DIR]
+monohunter watch --sector N [--workers 3] [--ffi] [--summaries DIR] \
+   [--csv-log sweeps/sectorN.csv] [--max-hours 4]   # <- the sweep tool (resumable)
 monohunter ffi-batch --tic <center> --sector N   # many stars, one cutout
 monohunter summarize --tic <id>                   # rotation/variability/flares/dipper
 monohunter catalog --summaries DIR --out csv      # parallel, pydantic-free
@@ -116,7 +119,9 @@ monohunter completeness --tic <quiet> --sector N  # or --sample M --catalog CSV
 monohunter novelty --tic <id> | --candidates DIR  # VSX known-vs-new
 monohunter aggregate --contributions contributions --out _site
 # release: bump pyproject.toml + monohunter/__init__.py + CHANGELOG.md
-git tag vX.Y.Z && git push origin vX.Y.Z          # -> release.yml -> PyPI OIDC
+git tag vX.Y.Z && git push origin vX.Y.Z    # -> release.yml (PyPI OIDC) + docker.yml (GHCR)
+# 24/7 deploy: docker compose up -d   (restart:always watcher on newest sector, ./data volume)
+docker run --rm -v ./data:/data ghcr.io/rinkia/monohunter watch --sector N --csv-log ...
 ```
 Sector pool: `Observations.query_criteria(obs_collection='TESS',
 dataproduct_type='timeseries',sequence_number=N,t_exptime=120)`.
@@ -157,35 +162,42 @@ dataproduct_type='timeseries',sequence_number=N,t_exptime=120)`.
   ~half width) -> EB_RESID_FRAC=0.05 loosens period_from_transits vs sharp transits.
 
 ## Reference facts
-- Repo public. **PyPI: monohunter v0.3.2** (OIDC trusted publishing; releases cut by
-  `git tag vX.Y.Z && git push`). v0.3.0 = eb + rotation-plot + subclass; v0.3.1 =
-  eclipse-fragment merge; v0.3.2 = subclass carried on the sweep path.
+- Repo public. **PyPI: monohunter v0.5.0** (OIDC trusted publishing; releases cut by
+  `git tag vX.Y.Z && git push` -> release.yml + docker.yml). Version history:
+  v0.3.x = eb/rotation-plot/subclass/eclipse-merge; **v0.4.0** = watch-is-the-sweep-tool
+  (`--csv-log` + auto-retry), triage generalized off S14 (schema v7), Gaia DR3 ρ*
+  fallback, cross-sector EB periods, Colab quickstart + issue-form adoption;
+  **v0.5.0** = Docker image + GHCR publish + 24/7 homelab compose watcher, `watch
+  --max-hours` watchdog, Sector 18 catalog + vetted candidates. GHCR image:
+  `ghcr.io/rinkia/monohunter:{X.Y.Z,latest}` built on every v* tag.
 - Leaderboard https://rinkia.github.io/monohunter/ + per-sector catalog pages
-  (catalog_s15.html, catalog_s16.html; catalog.html is a redirect to S15). pages.yml
-  triggers on contributions/**, monohunter/swarm/**, catalog_page.py, catalogs/** and
-  LOOPS every catalogs/sector*.csv -> one catalog_s<N>.html each (future sectors auto-
-  publish, no CI edit). Each page embeds rotation_s<N>.png + a sector-nav button bar.
-- **Survey to date: ~32,500 stars over Sector 14 + 15 + 16.** Many EBs (all VSX-known
-  so far), 0 confirmed planets (expected survey-scale).
-- **Best candidate: TIC 298009554 S15** — clean 1.4% isolated single transit, SNR
-  123, NOT in VSX (genuinely new; needs RV/2nd transit). 2nd: TIC 165991532 (=alpha
-  Draconis/Thuban, KNOWN EB). Leaderboard has 10 candidates.
-- **Sector 16 (5000 SPOC targets): 8 novels.** Deep EB TIC 120239458 (SNR 285, 20%
-  primary + 1.2% secondary @ 6.74d gap; period unrecoverable in-sector — 1 primary).
-- **Sector 17 (5000 SPOC targets): 30 novels -> 4 vetted real, 2 VSX-novel.**
-  **PRIORITY FOLLOW-UP = TIC 400048097** (bright Tmag 9.5, clean 2.5% flat-bottomed
-  single transit, sharp ingress = NOT grazing, VSX-novel, not-TOI, ρ*-missing so
-  period unconstrained — the actual mono-transit discovery target). Documented in
-  docs/followup-targets.md. Also new: TIC 118182747 (new deep 16% EB). The other
-  26 novels = edge/gap/end-of-sector ramps + faint-star noise (FP).
+  (catalog_s15/16/17/18.html; catalog.html redirects to S15). pages.yml triggers on
+  contributions/**, monohunter/swarm/**, catalog_page.py, catalogs/** and LOOPS every
+  catalogs/sector*.csv -> one catalog_s<N>.html each (future sectors auto-publish, no
+  CI edit). Each page embeds rotation_s<N>.png + a sector-nav button bar.
+- **Survey to date: ~19,700 stars in committed catalogs over Sectors 15+16+17+18**
+  (S14 also swept, not in a committed catalog). Many EBs (nearly all VSX-known),
+  0 confirmed planets (expected survey-scale). 20 candidates on the leaderboard.
+- **Live discovery targets (novel, VSX-clear, awaiting RV / 2nd transit):**
+  - **TIC 400048097 (S17)** — bright Tmag 9.5, clean 2.5% flat-bottomed single transit,
+    sharp ingress (not grazing), Gaia-ρ* period P~29d, next transit ~2026-08-29.
+  - **TIC 22945095 (S18)** — 2.7% single transit, Gaia-ρ* P~12.5d, next transit
+    ~2026-08-23 (tighter window than 400048097). Both in docs/followup-targets.md.
+  - Historical best: TIC 298009554 (S15, 1.4% SNR 123, VSX-novel).
+- **Vetting results by sector:** S16 8 novels -> **0 real** (all residual low-SNR FP;
+  vetted 2026-08-31). S17 30 novels -> 4 vetted, 2 VSX-novel (400048097, 118182747
+  deep-16%-EB). S18 36 novels -> 4 vetted (22945095 novel transit; 73487688 new 7% EB;
+  13389059 = VSX NY Cep, eb recovered P=15.270d vs 15.276d; 125755686 deep EB).
 - Canonical: TOI-2180 b = TIC 298663873 (transit S19, ~24h, P260.8d). TOI-813 b =
   TIC 55525572 (multi-sector; period_from_transits recovers 83.896d vs true 83.9d).
-  Eccentric-EB regression: TIC 271763138 (VSX P=44.8d EA; eb returns None, correct).
+  Eccentric-EB regression: TIC 271763138 (VSX P=44.8d EA; in-sector eb returns None;
+  cross-sector combined = 134.48d = 3x VSX 44.83d, documented sparse-epoch alias).
 - Throughput ~1300 stars/hr at workers=3 (MAST-bound); workers>3-4 risks truncation.
-- Committed catalogs: sector15.csv (8999 stars: 1928 rotators) + sector16.csv (3382
-  stars: 601 rotator, 459 variable, 86 flaring, 29 dipper). NOTE: sector16 subclass is
-  all "quiet" (written before the v0.3.2 fix); repopulates on the next fresh sweep.
-  labels/seed_labels.csv = 40 hand-vetted triage labels (LOO 92%).
+- Committed catalogs (stars): sector15 8999, sector16 3382, sector17 3276, sector18
+  4054. sector18 has subclass populated (875 rotator/492 variable/214 flaring/32 dipper);
+  sector15/16 subclass predate the v0.3.2 fix (repopulate on a fresh sweep).
+  labels/seed_labels.csv = 49 hand-vetted triage labels (LOO 96% after S18 retrain;
+  log_baseline_scatter now carries a real negative weight).
 
 ## Publishing flow (vetted -> leaderboard; sweep -> catalog) — ALREADY WIRED
 - **Vetted candidate -> leaderboard:** drop the candidate's record JSON into
@@ -225,7 +237,7 @@ Everything in v0.1.0 PLUS this session:
   sector-nav buttons; catalog.html redirect; leaderboard banner refreshed to 0.3.x;
   README documents eb/rotation-plot/subclass.
 
-## v0.4.0 work (this session, UNRELEASED — 5 improvements)
+## v0.4.0 (RELEASED — 5 improvements)
 1. **watch IS the sweep tool** — `--csv-log` writes the per-star status CSV (sweep
    schema); errored stars logged AND left un-processed so re-running retries only
    failures (kills the S16 manual-clean dance). One-command sweep. No more scratchpad
@@ -245,7 +257,27 @@ Everything in v0.1.0 PLUS this session:
    .github/ISSUE_TEMPLATE/candidate.yml (issue-form submission for non-coders).
    SKIPPED: recent-finds gallery (needs committed PNGs).
 
+## v0.5.0 (RELEASED — always-on deployment)
+1. **Docker image + GHCR publish** — Dockerfile (python:3.12-slim, HOME+WORKDIR=/data
+   shared volume, MPLBACKEND=Agg); docker.yml builds+pushes ghcr.io/rinkia/monohunter
+   (:X.Y.Z + :latest) on every v* tag.
+2. **24/7 homelab watcher** — docker-compose.yml restart:always service loops
+   `monohunter watch` on the newest sector (auto-detected), resumable + self-healing
+   (errored stars retry next cycle, corrupt FITS pruned), persists in ./data.
+3. **`watch --max-hours` watchdog** — daemon-timer force-exits a run wedged on a hung
+   MAST socket a worker thread can't kill; per-star state saved so nothing is lost.
+4. **Sector 18 published** — 4054-star catalog + 4 vetted candidates (see reference facts);
+   9 S18 labels retrain triage to 96% LOO, log_baseline_scatter gains real weight.
+- Also shipped between v0.3.2 and v0.4.0: **S16 + S17 catalogs published to Pages**,
+  **4 vetted S17 candidates** promoted (400048097 priority), followup-targets.md.
+
 ## Next steps / open
+- **PRIORITY: the two live discovery targets** (400048097 S17, 22945095 S18) —
+  ground photometry near their next-transit windows (~2026-08-23/29) to catch transit
+  #2 and collapse the period; RV to get companion mass. This is the actual science
+  output pending. See docs/followup-targets.md.
+- **S19+ sweeps** — the pipeline is now one command (`watch --csv-log --max-hours`) and
+  the compose watcher auto-picks the newest sector; just needs MAST headroom to run.
 - **S16 8 novels VETTED (2026-08-31) -> 0 real.** PNG-checked all 7 low-SNR (7-9.6)
   survivors: every one is the residual edge/gap/scatter FP class (start-of-sector ramp,
   pre-gap scatter stripe, mid-gap flank). None promoted. TIC 120239458 = known deep EB.
@@ -255,12 +287,10 @@ Everything in v0.1.0 PLUS this session:
   v0.3.2 writes it on the sweep path, the next sweep populates it automatically.
 - Live SURVEY-completeness demo (needs MAST headroom, no competing sweep).
 - Gaia DR3 variability as a 2nd novelty source.
-- General (non-S14) triage systematic-times: store event edge/gap distance ON the
-  record (triage.S14_SYSTEMATIC_TIMES is S14-hardcoded).
-- Non-SPOC FFI POOL enumeration for a true FFI sweep. astroplan observability;
-  MonoTools --deep.
-- EB period needs >=2 same-type eclipses in-sector; cross-sector primary times (like
-  the transit path already does) would recover periods the single sector can't.
+- Non-SPOC FFI POOL enumeration for a true FFI sweep. astroplan observability gate
+  (compute whether a next-transit window is observable from a site). MonoTools --deep.
 - If the catalog spans many sectors: sweep appends summaries to ONE JSONL (kill the
   small-files problem) instead of a file per star.
+- DONE this line of work (don't re-open): triage generalized off S14 (v0.4.0 schema v7);
+  cross-sector EB periods (v0.4.0); Gaia ρ* fallback (v0.4.0); S16/S17/S18 vetted.
 ```
