@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.5.0
+
+The always-on deployment release.
+
+### Deployment
+- **Docker image + GHCR publish** — `Dockerfile` (python:3.12-slim, `HOME`+`WORKDIR`
+  = `/data` so caches and outputs share one volume, `MPLBACKEND=Agg`). A `docker.yml`
+  workflow builds and pushes `ghcr.io/rinkia/monohunter` (`:X.Y.Z` + `:latest`) on
+  every `v*` tag.
+- **24/7 homelab watcher** — `docker-compose.yml` runs a `restart:always` service that
+  loops `monohunter watch` on the newest sector (auto-detected), resumable and
+  self-healing (errored stars retry next cycle, corrupt FITS pruned), persisting
+  everything in `./data`. Tunable via env (`HINT`/`MAX`/`WORKERS`/`SLEEP`/`MAXHOURS`).
+
+### Reliability
+- **`watch --max-hours` safety net** — a daemon-timer watchdog force-exits a run that
+  wedges on a hung MAST socket a worker thread can't kill. State is saved per star, so
+  nothing is lost and the run resumes; hitting the cap is itself the "wedged" signal.
+  Disarmed on clean completion. Wired into the compose watcher (default 4h) so a hung
+  cycle self-heals via `restart:always`.
+
+### Data
+- **Sector 18 published** — 4054-star variability catalog (875 rotators, 492 variable,
+  214 flaring, 32 dipper; subclass populated). 4 vetted S18 candidates promoted to the
+  leaderboard incl. **TIC 22945095** (novel 2.7% single transit, P~12.5d, next transit
+  ~2026-08-23 — tighter follow-up window than TIC 400048097) and NY Cep (`eb` recovered
+  P=15.270d vs VSX 15.276d).
+- **Triage sharper** — 9 S18 labels retrain the model to 96% leave-one-out;
+  `log_baseline_scatter` gains a real negative weight now that training rows carry the
+  v7 edge_gap+scatter columns, demoting the noisy-star FP class.
+
 ## 0.4.0
 
 The reproducibility + auto-vet release.
