@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.1
+
+- Docs: README brought current through v0.9.0 — `followup`, `observe`, VSX+Gaia
+  `novelty`, `summarize --from-catalog`, `.jsonl` summaries, `clean-cache`, `ffi-pool`
+  + `watch --target-pool`, `triage --top`, `--dry-run`, the long-run safety net
+  (progress + `--slow-warn` + soft-warn watchdog), the five extended anomaly detectors,
+  the physical pulsator subclasses, and schema v7. No code change — cut to refresh the
+  PyPI project description.
+
 ## 0.9.0
 
 The confirmation-tracking release — the outcome side of a discovery.
