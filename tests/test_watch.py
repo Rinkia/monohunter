@@ -193,19 +193,5 @@ def test_watchdog_disarmed_on_clean_finish(tmp_path):
     assert r.scanned == 3          # finished, no forced exit
 
 
-def test_watchdog_fires_on_deadline(tmp_path, monkeypatch):
-    import os as _os
-    import time
-
-    fired = {}
-
-    def fake_exit(code):
-        fired["code"] = code
-        raise SystemExit(code)     # swallowed by the daemon thread; proves _fire ran
-
-    monkeypatch.setattr(_os, "_exit", fake_exit)
-    t = W._start_watchdog(0.0002, str(tmp_path / "s.json"), lambda: "0/1 processed")  # ~0.7s
-    time.sleep(1.0)
-    t.cancel()
-    assert fired.get("code") == 2
-    assert (tmp_path / "s.json.watchdog").exists()   # deadline marker written
+# The watchdog moved to monohunter.progress.Watchdog (shared by watch + summarize
+# --from-catalog); its firing behavior is tested in tests/test_progress.py.

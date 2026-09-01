@@ -36,7 +36,9 @@ def _summarize_from_catalog(args) -> int:
     target (already-written stars skipped); per-TIC failures are counted, not fatal.
     """
     from concurrent.futures import ThreadPoolExecutor, as_completed
+    from contextlib import nullcontext
 
+    from .progress import ProgressReporter, Watchdog
     from .summary import load_summaries, run_summary, tics_from_catalog, write_summary
 
     work = tics_from_catalog(args.from_catalog)
@@ -63,17 +65,31 @@ def _summarize_from_catalog(args) -> int:
         except Exception as exc:  # transient MAST / bad star -> count, keep going
             return ts, None, exc
 
+    reporter = ProgressReporter(len(todo), label="stars",
+                                slow_after_s=getattr(args, "slow_warn", 120.0))
     n_ok = n_err = 0
-    with ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
-        futures = {pool.submit(_one, ts): ts for ts in todo}
-        for fut in as_completed(futures):
-            ts, summaries, err = fut.result()
-            if err is not None or not summaries:
-                n_err += 1
-                continue
-            for s in summaries:
-                write_summary(target, s)
-            n_ok += 1
+    # Optional wall-clock watchdog. Safe to hard-exit: a directory --outdir is resumable
+    # (already-written stars are skipped on re-run), so nothing already done is lost.
+    max_hours = getattr(args, "max_hours", None)
+    watchdog = (
+        Watchdog(max_hours, marker_path=str(target) + ".watchdog",
+                 progress=lambda: f"{reporter.i}/{len(todo)} done, {n_err} failed")
+        if max_hours and max_hours > 0 else nullcontext()
+    )
+    with watchdog:
+        with ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
+            futures = {pool.submit(_one, ts): ts for ts in todo}
+            for fut in as_completed(futures):
+                ts, summaries, err = fut.result()
+                if err is not None or not summaries:
+                    n_err += 1
+                    reporter.tick(f"TIC {ts[0]} S{ts[1]}", "failed/empty")
+                    continue
+                for s in summaries:
+                    write_summary(target, s)
+                n_ok += 1
+                reporter.tick(f"TIC {ts[0]} S{ts[1]}", "ok")
+    reporter.done()
     print(f"done: {n_ok} summarized, {n_err} failed/empty (re-run to retry).")
     return 0
 
@@ -173,6 +189,9 @@ def main(argv: list[str] | None = None) -> int:
     comp.add_argument("--plot", default=None, metavar="PNG",
                       help="also render the depth x duration recovery heatmap here "
                       "(the publishable survey-sensitivity figure)")
+    comp.add_argument("--slow-warn", type=float, default=600.0, metavar="S",
+                      help="warn when a single star's injection grid takes longer than "
+                      "S seconds (a stall short of the network timeout)")
 
     sm = sub.add_parser(
         "summarize",
@@ -192,6 +211,11 @@ def main(argv: list[str] | None = None) -> int:
                     help="parallel MAST downloads for --from-catalog (network-bound; 4-8)")
     sm.add_argument("--outdir", default="summaries", help="where to write summary JSON "
                     "(a path ending in .jsonl appends one line per star to one file)")
+    sm.add_argument("--max-hours", type=float, default=None, metavar="H",
+                    help="--from-catalog watchdog: force-exit past H hours (a hung socket "
+                    "can wedge a worker). Resumable with a directory --outdir — re-run to continue.")
+    sm.add_argument("--slow-warn", type=float, default=120.0, metavar="S",
+                    help="--from-catalog: warn when a single star takes longer than S seconds")
 
     ct = sub.add_parser("catalog", help="aggregate stellar summaries into one CSV catalog")
     ct.add_argument("--summaries", default="summaries", help="dir of summary JSONs")
@@ -304,6 +328,8 @@ def main(argv: list[str] | None = None) -> int:
         help="scan the TIC ids in this file (one per line) instead of the sector's "
         "2-min SPOC pool — e.g. an ffi-pool list, with --ffi, for a true FFI sweep",
     )
+    wat.add_argument("--slow-warn", type=float, default=120.0, metavar="S",
+                     help="warn when a single star takes longer than S seconds (a stall)")
 
     fp = sub.add_parser(
         "ffi-pool",
@@ -537,10 +563,14 @@ def main(argv: list[str] | None = None) -> int:
             step = len(stars) / args.sample
             tics = [int(stars[int(i * step)]["tic"]) for i in range(args.sample)]
 
-            def _progress(i, total, tic, status):
-                print(f"  [{i}/{total}] TIC {tic}: {status}", flush=True)
+            from .progress import ProgressReporter
 
-            grid, n_used = run_completeness_sample(tics, args.sector, n=args.n, progress=_progress)
+            reporter = ProgressReporter(len(tics), label="stars", slow_after_s=args.slow_warn)
+            grid, n_used = run_completeness_sample(
+                tics, args.sector, n=args.n,
+                progress=lambda i, total, tic, status: reporter.tick(f"TIC {tic}", status),
+            )
+            reporter.done()
             if grid is None:
                 print("No usable stars (all had their own signal or failed to fetch).")
                 return 0
@@ -786,6 +816,8 @@ def main(argv: list[str] | None = None) -> int:
             summaries_dir=args.summaries,
             csv_log=args.csv_log,
             max_hours=args.max_hours,
+            show_progress=True,
+            slow_after_s=args.slow_warn,
         )
         print(
             f"sector {res.sector}: scanned {res.scanned}, "

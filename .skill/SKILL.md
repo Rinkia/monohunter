@@ -136,6 +136,18 @@ docker run --rm -v ./data:/data ghcr.io/rinkia/monohunter watch --sector N --csv
 Sector pool: `Observations.query_criteria(obs_collection='TESS',
 dataproduct_type='timeseries',sequence_number=N,t_exptime=120)`.
 
+## Long-run safety net (progress.py — three layers)
+1. **Per-read timeout:** `fetch.socket.setdefaulttimeout(180)` caps every MAST/IRSA read
+   (no infinite hang). Base layer under everything.
+2. **ProgressReporter** (progress.py): one `[i/N] name: status (elapsed, ETA)` line per
+   step; flags a step slower than `slow_after_s` as `[WARN] slow step`. Wired into watch
+   (per-star), completeness --sample, summarize --from-catalog. CLI flag `--slow-warn S`.
+3. **Watchdog** (progress.py): soft-warns at 80% of `--max-hours`, force-exits (os._exit)
+   at the cap. For RESUMABLE runs only (state saved per step) — watch + summarize
+   --from-catalog. NOT on completeness (a force-exit discards the in-memory survey grid;
+   it relies on layers 1+2). ProgressReporter is pure/clock-injected/tested; Watchdog
+   firing tested via monkeypatched os._exit.
+
 ## Pitfalls (learned the hard way this session)
 - **MAST download had NO timeout** -> a hung connection froze a sweep worker ~9h.
   Fixed: `socket.setdefaulttimeout(180)` in fetch.py. Under sweep CONTENTION,

@@ -14,15 +14,15 @@ from __future__ import annotations
 
 import json
 import os
-import sys
-import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
 from .fetch import search_tess  # noqa: F401  (re-exported convenience)
 from .pipeline import run_target
+from .progress import ProgressReporter, Watchdog
 from .record import FindRecord
 
 
@@ -105,28 +105,6 @@ _CSV_FIELDS = ["tic", "sector", "status", "best_snr", "best_depth_ppt",
                "edge_gap_dist_d", "baseline_scatter_ppt"]
 
 
-def _start_watchdog(max_hours: float, state_path: str, progress: Callable[[], str]):
-    """Daemon timer that force-exits the process after max_hours. A hung MAST
-    socket can wedge a worker thread that Python cannot kill, leaving the whole run
-    idle forever (seen on a resumed sweep). State is saved after every star, so a
-    hard os._exit at the deadline loses nothing and the run is resumable — hitting
-    the cap IS the "something is wrong / too slow" signal. Returns the Timer (cancel
-    it on clean completion)."""
-    def _fire() -> None:
-        msg = f"[watchdog] max_hours={max_hours} exceeded; {progress()}. Forcing exit; resume to continue."
-        try:
-            Path(state_path + ".watchdog").write_text(msg, encoding="utf-8")
-        except Exception:
-            pass
-        print(msg, file=sys.stderr, flush=True)
-        os._exit(2)
-
-    t = threading.Timer(max_hours * 3600.0, _fire)
-    t.daemon = True
-    t.start()
-    return t
-
-
 def _append_csv_row(csv_log: str, sector: int, tic: int, status: str,
                     recs: list[FindRecord]) -> None:
     import csv as _csv
@@ -164,6 +142,8 @@ def watch(
     summaries_dir: str | None = None,
     csv_log: str | None = None,
     max_hours: float | None = None,
+    show_progress: bool = False,
+    slow_after_s: float = 120.0,
 ) -> WatchResult:
     """Process the next `max_targets` un-scanned TICs of `sector`. Resumable.
 
@@ -196,13 +176,9 @@ def watch(
     n_errors = 0
     n_done = 0
 
-    # Wall-clock safety net: force-exit if the run blows past max_hours (a hung
-    # MAST socket can wedge a worker thread indefinitely). Resumable — state is
-    # saved per star, so nothing is lost.
-    watchdog = (
-        _start_watchdog(max_hours, state_path,
-                        lambda: f"{n_done}/{len(todo)} processed, {n_errors} error")
-        if max_hours and max_hours > 0 else None
+    reporter = (
+        ProgressReporter(len(todo), label="stars", slow_after_s=slow_after_s)
+        if show_progress and todo else None
     )
 
     def consume(tic: int, recs: list[FindRecord], errored: bool) -> None:
@@ -217,6 +193,8 @@ def watch(
             n_errors += 1
             if csv_log:
                 _append_csv_row(csv_log, sector, tic, "error", [])
+            if reporter is not None:
+                reporter.tick(f"TIC {tic}", "error (will retry)")
             return
         status = "none"
         for rec in recs:
@@ -229,6 +207,8 @@ def watch(
             _append_csv_row(csv_log, sector, tic, status, recs)
         mark_processed(state, sector, [tic])
         save_state(state_path, state)   # incremental — resumable on crash
+        if reporter is not None:
+            reporter.tick(f"TIC {tic}", status)
 
     def safe_run(tic: int) -> tuple[list[FindRecord], bool]:
         try:
@@ -236,7 +216,15 @@ def watch(
         except Exception:
             return [], True   # errored -> not marked processed -> retried next run
 
-    try:
+    # Wall-clock safety net: force-exit if the run blows past max_hours (a hung MAST
+    # socket can wedge a worker thread indefinitely). Resumable — state is saved per
+    # star, so nothing is lost; the watchdog soft-warns at 80% before firing.
+    watchdog = (
+        Watchdog(max_hours, marker_path=state_path + ".watchdog",
+                 progress=lambda: f"{n_done}/{len(todo)} processed, {n_errors} error")
+        if max_hours and max_hours > 0 else nullcontext()
+    )
+    with watchdog:
         if workers <= 1:
             for tic in todo:
                 recs, errored = safe_run(tic)
@@ -247,9 +235,8 @@ def watch(
                 for fut in as_completed(futures):
                     recs, errored = fut.result()
                     consume(futures[fut], recs, errored)
-    finally:
-        if watchdog is not None:
-            watchdog.cancel()   # clean finish -> disarm the safety net
+    if reporter is not None:
+        reporter.done()
 
     # state now includes what we just processed; whatever's still pending is remaining.
     remaining = len(pending_targets(state, sector, tics, None))

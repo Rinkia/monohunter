@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.7.0
+
+The long-run safety-net release. Three layers now guard every long / network run from
+silent stalls:
+
+- **Per-read timeout (existing):** `socket.setdefaulttimeout(180)` caps every MAST/IRSA
+  read, so no single call hangs forever.
+- **Per-step progress + stall warning (new):** a shared `ProgressReporter` prints one
+  line per star with elapsed/ETA and flags a step slower than `--slow-warn` seconds — a
+  stall short of the hard timeout is now visible instead of a silent freeze. Wired into
+  `watch` (per-star, previously end-only), `completeness --sample`, and
+  `summarize --from-catalog` (previously a single line for the whole batch).
+- **Wall-clock watchdog (generalized):** the `watch` force-exit watchdog moved to a
+  shared `Watchdog` that now also **soft-warns at 80%** of the cap before firing, and is
+  offered to `summarize --from-catalog --max-hours` (resumable, so a hard exit loses
+  nothing). Force-exit is intentionally NOT added to `completeness` (it would discard the
+  in-memory survey grid); it relies on the socket timeout + per-star stall warning.
+
+New flags: `--slow-warn S` on `watch` / `completeness` / `summarize`; `--max-hours H` on
+`summarize --from-catalog`.
+
 ## 0.6.2
 
 - **`completeness --sample` now prints per-star progress** (`[i/N] TIC … used/skipped/
