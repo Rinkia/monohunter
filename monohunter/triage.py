@@ -165,16 +165,53 @@ def score_record(model, rec) -> float:
     return float(model.predict_proba(feat)[0, 1])
 
 
-def save_model(model, path: str | Path) -> None:
-    import joblib
+class _JsonModel:
+    """A pure-numpy stand-in for the StandardScaler+LogisticRegression pipeline,
+    rebuilt from plain-float JSON. Implements predict_proba so score_record/rank work
+    unchanged — no pickle, so loading a shared/untrusted model file can NEVER execute
+    code (joblib.load runs arbitrary pickle; this only reads floats)."""
 
-    joblib.dump(model, path)
+    def __init__(self, params: dict):
+        self.mean = np.asarray(params["mean"], dtype=float)
+        self.scale = np.asarray(params["scale"], dtype=float)
+        self.coef = np.asarray(params["coef"], dtype=float)
+        self.intercept = float(params["intercept"])
+
+    def predict_proba(self, X):
+        xs = (np.asarray(X, dtype=float) - self.mean) / self.scale
+        z = xs @ self.coef + self.intercept
+        p1 = 1.0 / (1.0 + np.exp(-z))                    # P(class 1 = interesting)
+        return np.column_stack([1.0 - p1, p1])
+
+
+def _model_to_params(model) -> dict:
+    """Extract the pipeline's learned floats (scaler stats + LR weights). The label
+    set must be the binary {0,1} the trainer uses, with 1 = interesting."""
+    scaler = model.named_steps["standardscaler"]
+    lr = model.named_steps["logisticregression"]
+    if list(lr.classes_) != [0, 1]:
+        raise ValueError(f"expected binary classes [0, 1], got {list(lr.classes_)}")
+    return {
+        "format": "monohunter-triage-logreg-v1",
+        "mean": scaler.mean_.tolist(),
+        "scale": scaler.scale_.tolist(),
+        "coef": lr.coef_[0].tolist(),
+        "intercept": float(lr.intercept_[0]),
+    }
+
+
+def save_model(model, path: str | Path) -> None:
+    """Persist the model as JSON (safe: floats only, not a pickle)."""
+    import json
+
+    Path(path).write_text(json.dumps(_model_to_params(model), indent=2), encoding="utf-8")
 
 
 def load_model(path: str | Path):
-    import joblib
+    """Load a JSON triage model into a pure-numpy scorer. No code execution on load."""
+    import json
 
-    return joblib.load(path)
+    return _JsonModel(json.loads(Path(path).read_text(encoding="utf-8")))
 
 
 def rank_candidates(model, candidates_dir: str | Path) -> list[tuple[int, int, float]]:

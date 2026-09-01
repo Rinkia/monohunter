@@ -248,10 +248,10 @@ def main(argv: list[str] | None = None) -> int:
     tt = sub.add_parser("triage-train", help="train the ML triage model from labels + sweep CSVs")
     tt.add_argument("--labels", default="labels/seed_labels.csv", help="tic,label CSV (1=interesting)")
     tt.add_argument("--sweeps", default="sweeps", help="dir of sweep CSVs (feature source)")
-    tt.add_argument("--out", default="triage_model.pkl", help="output model path")
+    tt.add_argument("--out", default="triage_model.json", help="output model path")
 
     tr = sub.add_parser("triage", help="rank candidate records by P(worth vetting)")
-    tr.add_argument("--model", default="triage_model.pkl", help="trained model path")
+    tr.add_argument("--model", default="triage_model.json", help="trained model path")
     tr.add_argument("--candidates", required=True, help="dir of candidate record JSONs")
     tr.add_argument("--min-prob", type=float, default=0.0, metavar="P",
                     help="only show candidates scoring >= P (auto-cut the junk tail)")

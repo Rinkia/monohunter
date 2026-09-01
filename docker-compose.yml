@@ -1,10 +1,14 @@
 # 24/7 fresh-data watcher for a homelab. Runs `monohunter watch` on the newest
 # TESS sector in a loop, resumable and self-healing (v0.4.0 auto-retries errored
-# stars on the next cycle). All state + outputs persist in ./data.
+# stars on the next cycle). All state + outputs persist in the named volume
+# `monohunter-data` (Docker-managed, so it's writable by the image's non-root user
+# with no host-side chown — a plain ./data bind mount would be root-owned and the
+# unprivileged container user couldn't write it).
 #
-#   docker compose up -d        # start the watcher
-#   docker compose logs -f      # follow it
-#   docker compose down         # stop
+#   docker compose up -d                              # start the watcher
+#   docker compose logs -f                            # follow it
+#   docker compose down                               # stop
+#   docker compose run --rm watcher sh -lc 'ls /data' # inspect the volume contents
 #
 # Tune HINT to a sector at or below the current newest one (the watcher probes
 # upward from it to auto-detect the freshest sector — keep it close to avoid a
@@ -20,7 +24,7 @@ services:
       SLEEP: "10800"    # seconds between cycles (3 h)
       MAXHOURS: "4"     # safety net: force-exit a cycle that hangs past this (resumable)
     volumes:
-      - ./data:/data
+      - monohunter-data:/data
     entrypoint: ["sh", "-lc"]
     # $$VAR so compose passes a literal $VAR for the in-container shell to expand.
     command: >
@@ -32,3 +36,6 @@ services:
         find /data/.cache/lightkurve -name '*.fits' -size 65536c -delete 2>/dev/null || true;
         echo "cycle done; sleeping $$SLEEP s"; sleep "$$SLEEP";
       done
+
+volumes:
+  monohunter-data:

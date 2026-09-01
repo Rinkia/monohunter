@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.9.2
+
+Security hardening (from an adversarial audit — no functional change to the science):
+
+- **Triage model is now JSON, not pickle.** `save_model`/`load_model` persisted the
+  scikit-learn pipeline via `joblib` (pickle under the hood), so loading a shared or
+  downloaded `.pkl` was arbitrary-code-execution. The model is just a StandardScaler +
+  LogisticRegression — now serialized as plain floats to JSON and loaded into a pure-numpy
+  scorer, so **loading a model file can never execute code**. Default paths are now
+  `triage_model.json`. (Re-run `triage-train` to produce the new format.)
+- **Docker image runs as a non-root user** (uid 10001) instead of root — a parser bug in a
+  dependency reached via a malicious FITS would land unprivileged, not as container-root.
+  The compose watcher and the `docker run` examples now use a Docker **named volume**
+  (`monohunter-data`), writable by that user with no host-side chown.
+- **Least-privilege CI.** `ci.yml` and `integration.yml` now pin `permissions: contents:
+  read`, so a fork pull request's test code can't misuse the job token. (Pages/release/
+  docker were already scoped; Pages deploys only on push-to-main, never a fork trigger.)
+
+Audited clean: no `eval`/`exec`/`subprocess`/shell, no unsafe YAML, no hardcoded secrets,
+fixed network hosts (no SSRF), HTML output escapes contributor strings, and record
+filenames come from validated integers (no path traversal).
+
 ## 0.9.1
 
 - Docs: README brought current through v0.9.0 — `followup`, `observe`, VSX+Gaia

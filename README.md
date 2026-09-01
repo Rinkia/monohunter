@@ -32,13 +32,16 @@ ASAS-SN ground cross-check needs one extra: `pip install monohunter[ground]`.
 ### Or run it with Docker (no Python setup)
 
 ```bash
-docker run --rm -v "$PWD/data:/data" ghcr.io/rinkia/monohunter \
+docker run --rm -v monohunter-data:/data ghcr.io/rinkia/monohunter \
     run --tic 298663873 --sectors 19
 ```
 
-Outputs land in `./data`. For a always-on fresh-data watcher (ideal on a homelab),
-`docker compose up -d` runs `monohunter watch` on the newest sector in a resumable,
-self-healing loop — see [`docker-compose.yml`](docker-compose.yml).
+The container runs as a **non-root** user, so it persists to a Docker **named volume**
+(`monohunter-data` above — Docker makes it writable by that user). A plain
+`-v "$PWD/data:/data"` bind mount is root-owned on the host and needs a one-time
+`chown 10001 data` to be writable. For an always-on fresh-data watcher (ideal on a
+homelab), `docker compose up -d` runs `monohunter watch` on the newest sector in a
+resumable, self-healing loop — see [`docker-compose.yml`](docker-compose.yml).
 
 ## Usage
 

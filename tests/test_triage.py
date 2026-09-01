@@ -69,3 +69,29 @@ def test_score_record_falls_back_when_edge_gap_missing():
     old = {"snr": 7.5, "depth_ppt": 0.5, "duration_hr": 30, "likely_eb": False,
            "period_constrained": False, "event_time_btjd": 1695.7}  # near S14 gap
     assert 0.0 <= score_record(model, old) <= 1.0                    # no crash, valid prob
+
+
+def test_model_persists_as_safe_json_and_scores_identically(tmp_path):
+    """save_model writes plain JSON (not a pickle), and the reloaded pure-numpy model
+    reproduces the sklearn pipeline's scores — so loading a shared model can't run code."""
+    import json
+
+    from monohunter.triage import load_model, save_model
+
+    rng = np.random.default_rng(2)
+    X = np.array([_synth(i % 2 == 0, rng) for i in range(60)])
+    y = np.array([1 if i % 2 == 0 else 0 for i in range(60)])
+    model = train(X, y)
+
+    path = tmp_path / "triage_model.json"
+    save_model(model, path)
+
+    # the file is JSON floats — parseable, no pickle opcodes
+    params = json.loads(path.read_text(encoding="utf-8"))
+    assert params["format"] == "monohunter-triage-logreg-v1"
+    assert set(params) >= {"mean", "scale", "coef", "intercept"}
+
+    loaded = load_model(path)
+    rec = {"snr": 350, "depth_ppt": 100, "duration_hr": 6, "likely_eb": True,
+           "period_constrained": True, "edge_gap_dist_d": 6.0, "baseline_scatter_ppt": 0.8}
+    assert abs(score_record(loaded, rec) - score_record(model, rec)) < 1e-9
