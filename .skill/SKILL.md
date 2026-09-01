@@ -45,7 +45,9 @@ SIDE PRODUCTS (same download):
     -> catalog CSV -> catalog_page (static HTML) -> Pages
   ffi_batch (one cutout -> many stars, crowding dedup, full records)
   ground (ZTF via IRSA + ASAS-SN via pyasassn: variability cross-check)
-  anomaly (flares, dippers)   vetting (crowd label UI)   triage (ML rank)
+  anomaly (flares, dippers; pull_guarded_dips shared)   vetting (crowd label UI)   triage (ML rank)
+  anomaly_ext (deep dimming/Boyajian, heartbeat, pulsator subclass RRLyr/dSct/gDor,
+    CV/nova outbursts, generalized anomaly_score) -> fed into summary v3
   completeness (injection-recovery survey sensitivity)   novelty (VSX match)
   eb (orbital period from >=2 SAME-TYPE (primary) eclipses: eclipse_times, split by
       depth, period_from_transits on primaries only; lone primary+secondary =
@@ -89,8 +91,10 @@ guards (overfit). Triage now ranks survivors so vetting goes to the real ones.
 - **SCHEMA_VERSION v7** (v5 = n_sectors_observed+recurring_dip; v6 = measured_period_d,
   n_transits_used; v7 = edge_gap_dist_d + baseline_scatter_ppt, the FP features that
   generalize triage off the S14 hardcode). Additive optional only; old records still load.
-- **SUMMARY schema v2** (v2 = subclass: eclipsing|pulsator|rotator refinement via
-  periodogram harmonics + eclipse shape). Additive; old catalogs still load.
+- **SUMMARY schema v3** (v2 = subclass: eclipsing|pulsator|rotator via periodogram
+  harmonics; v3 = anomaly_score + is_deep_dipper + n_outbursts + is_heartbeat, and the
+  pulsator subclass refined to rr_lyrae|delta_scuti|gamma_dor). Additive; old catalogs load.
+  Extended detectors live in anomaly_ext.py (pure/offline-tested); summarize() calls them.
 - Tests: REALISTIC sector-length curves (~15000 cadences). Wide dips for the box
   (>=2h). One runnable check per non-trivial logic; guards get a regression test.
 - Commits: conventional, terse body, Co-Authored-By line. Every change: pytest -q

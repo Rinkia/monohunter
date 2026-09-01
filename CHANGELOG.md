@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.8.0
+
+The extended-anomaly release — five new light-curve anomaly detectors beyond
+flares/dippers (new `monohunter/anomaly_ext.py`, all pure/offline-tested):
+
+- **Deep irregular dimming** (`find_deep_dimming`) — Boyajian / KIC 8462852-like: deep
+  (%-level), aperiodic dips. Reuses the guarded box-pull, keeps only deep dips, asks
+  many + irregular.
+- **Heartbeat stars** (`find_heartbeat`) — eccentric binaries: a phase-localized, bipolar
+  tidal pulse once per orbit. Folds at the dominant period (testing harmonic multiples,
+  since a narrow pulse makes LombScargle lock a harmonic) and checks pulse concentration.
+- **Physical pulsator subclass** (`pulsator_subclass`) — refines a periodic pulsator into
+  RR Lyrae / delta Scuti / gamma Dor from period + amplitude + fold skew (sawtooth
+  asymmetry). Now applied in `summarize`, so catalogs carry the physical class.
+- **Cataclysmic / nova outbursts** (`find_outbursts`) — sustained (hours+) bright
+  level-shifts on RAW flux, distinct from a flare's spike.
+- **Generalized anomaly score** (`anomaly_score`) — a model-agnostic 0-1 "weirdness"
+  blending variability, heavy tails, flares, deep dips, and outbursts, with a transparent
+  component breakdown — a novelty ranker over any light curve.
+
+Wiring: `summarize` (SUMMARY schema **v3**) now records `anomaly_score`, `is_deep_dipper`,
+`n_outbursts`, `is_heartbeat`, and the refined pulsator subclass — so a sweep catalogs
+these automatically. The `anomaly` CLI reports all detectors per sector. Additive schema;
+old catalogs still load. Detectors are pure/bounded (no watchdog needed); they run on the
+already-downloaded flux inside the safety-net-guarded sweep.
+
 ## 0.7.0
 
 The long-run safety-net release. Three layers now guard every long / network run from

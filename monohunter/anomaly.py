@@ -103,21 +103,16 @@ def find_flares(time: np.ndarray, flux: np.ndarray) -> list[FlareEvent]:
     return events
 
 
-def find_dippers(time: np.ndarray, flux: np.ndarray) -> DipperResult:
-    """Count GUARDED dimming events and decide dipper vs single-transit/EB.
+def pull_guarded_dips(
+    time: np.ndarray, flux: np.ndarray, max_iters: int = MAX_DIPPER_ITERS,
+) -> list[tuple[float, float, float]]:
+    """Iteratively pull the deepest GUARDED dip and mask it, up to max_iters.
 
-    A dipper is MANY dips with IRREGULAR spacing. One dip = a transit; many
-    REGULAR dips = an eclipsing binary; many irregular dips = a dipper.
-
-    Each dip is a real detection from the box matched filter with all its
-    false-positive guards (edge, gap-span, gap-flanking-ramp, scatter-stripe,
-    scatter-region, red-noise SNR) EXCEPT isolation — which is disabled here on
-    purpose, since a dipper is precisely a multi-dip star that isolation would
-    reject. This is what makes it robust to TESS systematics that a raw >3-sigma
-    threshold counts as spurious dips (the earlier naive version false-flagged
-    TOI-2180 with 6 "dips"; guarded counting leaves the 1 real transit).
-
-    We pull the deepest guarded dip, mask it, and re-search until none remain.
+    Each dip is a real box-matched-filter detection with every false-positive guard
+    (edge, gap-span, gap-flanking-ramp, scatter-stripe, scatter-region, red-noise SNR)
+    EXCEPT isolation — disabled on purpose, since a multi-dip star is exactly what
+    isolation would reject. Returns (t0_btjd, depth_ppt, duration_hr) per dip, deepest
+    first. Shared by the dipper counter and the deep-dimming (Boyajian) detector.
     """
     from .detect import BoxMatchedFilter
 
@@ -126,21 +121,34 @@ def find_dippers(time: np.ndarray, flux: np.ndarray) -> DipperResult:
     good = np.isfinite(time) & np.isfinite(flux)
     time, flux = time[good], flux[good]
     if time.size < 10:
-        return DipperResult(False, 0, float("nan"), ())
+        return []
 
     detector = BoxMatchedFilter(check_isolation=False)
     work = flux.copy()
-    dip_times: list[float] = []
-    for _ in range(MAX_DIPPER_ITERS):
+    dips: list[tuple[float, float, float]] = []
+    for _ in range(max_iters):
         cands = detector.search(time, work)
         if not cands:
             break
         c = cands[0]
-        dip_times.append(c.event_time_btjd)
+        dips.append((c.event_time_btjd, c.depth_ppt, c.duration_hr))
         half = (c.duration_hr / 24.0) * DIP_MASK_FACTOR
         work = work.copy()
         work[np.abs(time - c.event_time_btjd) <= half] = 1.0   # remove found dip
+    return dips
 
+
+def find_dippers(time: np.ndarray, flux: np.ndarray) -> DipperResult:
+    """Count GUARDED dimming events and decide dipper vs single-transit/EB.
+
+    A dipper is MANY dips with IRREGULAR spacing. One dip = a transit; many
+    REGULAR dips = an eclipsing binary; many irregular dips = a dipper.
+    Robust to TESS systematics that a raw >3-sigma threshold counts as spurious dips
+    (the earlier naive version false-flagged TOI-2180 with 6 "dips"; guarded counting
+    leaves the 1 real transit).
+    """
+    dips = pull_guarded_dips(time, flux)
+    dip_times = [d[0] for d in dips]
     n = len(dip_times)
     if n < 2:
         return DipperResult(False, n, float("nan"), tuple(dip_times))
@@ -152,12 +160,26 @@ def find_dippers(time: np.ndarray, flux: np.ndarray) -> DipperResult:
     return DipperResult(is_dipper, n, cv, tuple(dip_times))
 
 
-def run_anomaly(tic: int, sectors: list[int] | None = None, window_length: float | None = None):
-    """Fetch + detrend each sector of a TIC, then scan for flares and dippers.
+@dataclass(frozen=True)
+class SectorAnomaly:
+    """All anomaly detectors' verdicts for one sector's light curve."""
+    sector: int
+    flares: list                 # list[FlareEvent]
+    dipper: DipperResult
+    deep: object                 # anomaly_ext.DeepDimmingResult
+    outbursts: list              # list[anomaly_ext.OutburstEvent]
+    heartbeat: object            # anomaly_ext.HeartbeatResult
+    anomaly_score: float
 
-    Returns a list of (sector, list[FlareEvent], DipperResult). Network — mirrors
-    pipeline.run_target's fetch/detrend loop but runs the anomaly detectors.
+
+def run_anomaly(tic: int, sectors: list[int] | None = None, window_length: float | None = None):
+    """Fetch + detrend each sector of a TIC, then run every anomaly detector: flares,
+    dippers, deep irregular dimming, cataclysmic outbursts, heartbeat, and the
+    generalized anomaly score. Returns list[SectorAnomaly]. Network — mirrors
+    pipeline.run_target's fetch/detrend loop. Flares/dippers/deep-dimming run on the
+    FLATTENED flux; outbursts/heartbeat on the RAW flux (a 3-day detrend erases them).
     """
+    from .anomaly_ext import anomaly_score, find_deep_dimming, find_heartbeat, find_outbursts
     from .detrend import DEFAULT_WINDOW_D, flatten
     from .fetch import download_lightcurve, iter_lightcurves, search_tess
 
@@ -175,5 +197,13 @@ def run_anomaly(tic: int, sectors: list[int] | None = None, window_length: float
         t = np.asarray(lc.time.value if hasattr(lc.time, "value") else lc.time, dtype=float)
         f = np.asarray(getattr(lc.flux, "value", lc.flux), dtype=float)
         flat, _ = flatten(t, f, window_length=win)
-        out.append((int(row["sector"]), find_flares(t, flat), find_dippers(t, flat)))
+        out.append(SectorAnomaly(
+            sector=int(row["sector"]),
+            flares=find_flares(t, flat),
+            dipper=find_dippers(t, flat),
+            deep=find_deep_dimming(t, flat),
+            outbursts=find_outbursts(t, f),
+            heartbeat=find_heartbeat(t, f),
+            anomaly_score=anomaly_score(t, f, flat).score,
+        ))
     return out

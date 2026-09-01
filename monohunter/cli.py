@@ -528,11 +528,21 @@ def main(argv: list[str] | None = None) -> int:
         if not results:
             print(f"No light curves for TIC {args.tic}.")
             return 0
-        for sector, flares, dip in results:
-            print(f"S{sector}: {len(flares)} flare(s); "
-                  f"dipper={dip.is_dipper} ({dip.n_dips} guarded dips, "
-                  f"interval CV {dip.interval_cv:.2f})")
-            for fl in flares:
+        for r in results:
+            dip = r.dipper
+            print(f"S{r.sector}: anomaly score {r.anomaly_score:.2f} | "
+                  f"{len(r.flares)} flare(s); "
+                  f"dipper={dip.is_dipper} ({dip.n_dips} guarded dips, CV {dip.interval_cv:.2f})")
+            if r.deep.is_deep_dipper:
+                print(f"    DEEP DIMMING (Boyajian-like): {r.deep.n_dips} dips, "
+                      f"max depth {r.deep.max_depth_ppt:.0f}ppt, CV {r.deep.interval_cv:.2f}")
+            if r.heartbeat.is_heartbeat:
+                print(f"    HEARTBEAT: P={r.heartbeat.period_d:.2f}d, "
+                      f"pulse concentration {r.heartbeat.concentration:.2f}")
+            for ob in r.outbursts:
+                print(f"    OUTBURST @ {ob.t_start_btjd:.2f} BTJD  "
+                      f"+{ob.amplitude_ppt:.0f}ppt  {ob.duration_hr:.1f}h")
+            for fl in r.flares:
                 print(f"    flare @ {fl.t_peak_btjd:.2f} BTJD  "
                       f"+{fl.amplitude_ppt:.1f}ppt  {fl.duration_hr:.1f}h  ({fl.n_points} pts)")
         return 0

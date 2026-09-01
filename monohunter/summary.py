@@ -29,7 +29,8 @@ from pydantic import BaseModel, ConfigDict
 
 from . import __version__
 
-SUMMARY_SCHEMA_VERSION = 2  # v2: subclass (pulsator/rotator/eclipsing refinement)
+SUMMARY_SCHEMA_VERSION = 3  # v2: subclass; v3: anomaly_score + extended anomaly flags
+                            # (deep-dipper / outbursts / heartbeat) + physical pulsator subclass
 
 # Rotation search window and the LS power a peak must clear to be called real.
 ROT_MIN_PERIOD_D = 0.1
@@ -146,7 +147,12 @@ class SummaryResult:
     is_dipper: bool
     n_dips: int
     var_class: str            # quiet | rotator | variable | flaring | dipper
-    subclass: str = "quiet"   # eclipsing | pulsator | rotator | (echoes var_class otherwise)
+    subclass: str = "quiet"   # eclipsing | rr_lyrae | delta_scuti | gamma_dor | pulsator | rotator | ...
+    # v3 extended-anomaly fields (rarer classes + a model-agnostic weirdness score)
+    anomaly_score: float = 0.0     # 0 (quiet) .. 1 (very unusual)
+    is_deep_dipper: bool = False   # deep, aperiodic dimming (Boyajian/KIC 8462852-like)
+    n_outbursts: int = 0           # sustained brightenings (cataclysmic/nova outbursts)
+    is_heartbeat: bool = False     # eccentric-binary tidal pulse once per orbit
 
 
 def _classify(period, amp_ppt, n_flares, is_dipper) -> str:
@@ -163,8 +169,22 @@ def _classify(period, amp_ppt, n_flares, is_dipper) -> str:
 
 def summarize(time, raw_flux, flat_flux) -> SummaryResult:
     """One stellar summary. Rotation+variability on RAW flux; flares+dippers on
-    the transit-flattened flux. Pure."""
+    the transit-flattened flux; extended-anomaly classes (deep dipper / outbursts /
+    heartbeat / anomaly score) on whichever flux the physics lives in. Pure.
+
+    ponytail: the extended detectors add a few box-pulls + one LombScargle per star on
+    top of the existing dipper/rotation work; the sweep is MAST-download-bound, so this
+    stays a small fraction of per-star wall time. Share the guarded-dip pull if it ever bites.
+    """
     from .anomaly import find_dippers, find_flares
+    from .anomaly_ext import (
+        anomaly_score,
+        find_deep_dimming,
+        find_heartbeat,
+        find_outbursts,
+        fold_skew,
+        pulsator_subclass,
+    )
     from .ground import variability
 
     amp_ppt = variability(time, raw_flux).frac_amplitude * 1000.0
@@ -172,6 +192,15 @@ def summarize(time, raw_flux, flat_flux) -> SummaryResult:
     n_flares = len(find_flares(time, flat_flux))
     dip = find_dippers(time, flat_flux)
     var_class = _classify(period, amp_ppt, n_flares, dip.is_dipper)
+
+    subclass = _subclass(var_class, period, time, raw_flux, flat_flux)
+    if subclass == "pulsator":   # refine into a physical pulsator class
+        subclass = pulsator_subclass(period, amp_ppt, fold_skew(time, raw_flux, period))
+    deep = find_deep_dimming(time, flat_flux)
+    outbursts = find_outbursts(time, raw_flux)
+    heartbeat = find_heartbeat(time, raw_flux)
+    ascore = anomaly_score(time, raw_flux, flat_flux)
+
     return SummaryResult(
         var_amplitude_ppt=float(amp_ppt),
         rotation_period_d=period,
@@ -181,7 +210,11 @@ def summarize(time, raw_flux, flat_flux) -> SummaryResult:
         is_dipper=bool(dip.is_dipper),
         n_dips=int(dip.n_dips),
         var_class=var_class,
-        subclass=_subclass(var_class, period, time, raw_flux, flat_flux),
+        subclass=subclass,
+        anomaly_score=float(ascore.score),
+        is_deep_dipper=bool(deep.is_deep_dipper),
+        n_outbursts=int(len(outbursts)),
+        is_heartbeat=bool(heartbeat.is_heartbeat),
     )
 
 
@@ -204,6 +237,11 @@ class StellarSummary(BaseModel):
     n_dips: int = 0
     var_class: str = "quiet"
     subclass: str = "quiet"
+    # v3 extended-anomaly fields (additive; old catalogs still load)
+    anomaly_score: float = 0.0
+    is_deep_dipper: bool = False
+    n_outbursts: int = 0
+    is_heartbeat: bool = False
     tool_version: str = __version__
 
     def to_json(self, **kwargs) -> str:
@@ -354,5 +392,7 @@ def run_summary(tic: int, sectors: list[int] | None = None, window_length: float
             rotation_systematic=res.rotation_systematic, n_flares=res.n_flares,
             is_dipper=res.is_dipper, n_dips=res.n_dips, var_class=res.var_class,
             subclass=res.subclass,
+            anomaly_score=res.anomaly_score, is_deep_dipper=res.is_deep_dipper,
+            n_outbursts=res.n_outbursts, is_heartbeat=res.is_heartbeat,
         ))
     return out

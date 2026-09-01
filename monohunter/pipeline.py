@@ -66,6 +66,8 @@ def _write_summary(
         rotation_systematic=res.rotation_systematic, n_flares=res.n_flares,
         is_dipper=res.is_dipper, n_dips=res.n_dips, var_class=res.var_class,
         subclass=res.subclass,
+        anomaly_score=res.anomaly_score, is_deep_dipper=res.is_deep_dipper,
+        n_outbursts=res.n_outbursts, is_heartbeat=res.is_heartbeat,
     )
     write_summary(target, rec)
 
