@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "tic": 298009554,
+  "sector": 15,
+  "status": "pending",
+  "kind": "planet_candidate",
+  "observer": null,
+  "next_window_btjd": [
+    4262.9825093636455,
+    4269.1092529873495,
+    4294.369227122968
+  ],
+  "notes": [
+    "2026-09-01T12:31:22+00:00  historical best: clean 1.4% isolated transit SNR 123, VSX-novel; needs RV / 2nd transit"
+  ],
+  "created_utc": "2026-09-01T12:31:22+00:00",
+  "updated_utc": "2026-09-01T12:31:22+00:00"
+}

@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "tic": 400048097,
+  "sector": 17,
+  "status": "observing",
+  "kind": "planet_candidate",
+  "observer": "Rinkia",
+  "next_window_btjd": [
+    4269.7191142869915,
+    4282.488372913139,
+    4332.781098963699
+  ],
+  "notes": [
+    "2026-09-01T12:31:17+00:00  bright Tmag 9.5, clean 2.5% flat-bottomed transit; Gaia rho* P~29d; next window ~2026-08-29 (see docs/followup-targets.md)"
+  ],
+  "created_utc": "2026-09-01T12:31:17+00:00",
+  "updated_utc": "2026-09-01T12:31:17+00:00"
+}

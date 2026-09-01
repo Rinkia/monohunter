@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.9.0
+
+The confirmation-tracking release — the outcome side of a discovery.
+
+- **`monohunter followup`** (new `monohunter/followup.py`) tracks a candidate's
+  confirmation lifecycle as git-friendly per-target JSON records:
+  `pending -> observing -> confirmed | rejected` (with validated transitions; a call can
+  be reopened). `followup add` (optionally seeded from a candidate record via
+  `--from-record`, pulling its next-transit window), `followup set` (transition + dated
+  note + observer), `followup list` (optionally filtered by `--status`). Closes the loop
+  `observe` opens: observe says WHEN to point, followup records the OUTCOME.
+- **Seeded `followups/`** with the three live targets: TIC 400048097 (S17) and
+  TIC 22945095 (S18) as `observing`, TIC 298009554 (S15) as `pending` — a community
+  follow-up ledger anyone can extend by PR, like `contributions/`.
+
+Pure state model + JSON store, fully offline (no network). Additive.
+
 ## 0.8.0
 
 The extended-anomaly release — five new light-curve anomaly detectors beyond

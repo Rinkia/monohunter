@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "tic": 22945095,
+  "sector": 18,
+  "status": "observing",
+  "kind": "planet_candidate",
+  "observer": "Rinkia",
+  "next_window_btjd": [
+    4269.855041278104,
+    4275.711676316526,
+    4302.19888082497
+  ],
+  "notes": [
+    "2026-09-01T12:31:20+00:00  novel 2.7% transit; Gaia rho* P~12.5d; next window ~2026-08-23 (tighter than 400048097)"
+  ],
+  "created_utc": "2026-09-01T12:31:20+00:00",
+  "updated_utc": "2026-09-01T12:31:20+00:00"
+}

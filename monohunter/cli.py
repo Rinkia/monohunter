@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
+from .followup import KINDS, STATUSES
 from .pipeline import run_target
 from .swarm import aggregate, load_records, render_html, render_json
 
@@ -343,6 +344,24 @@ def main(argv: list[str] | None = None) -> int:
     fp.add_argument("--radius", type=float, default=0.2, help="cone radius deg (keep small)")
     fp.add_argument("--tmag-max", type=float, default=14.0, help="skip stars fainter than this")
     fp.add_argument("--out", default="ffi_pool.txt", help="output TIC list (one per line)")
+
+    fu = sub.add_parser(
+        "followup",
+        help="track a candidate's confirmation lifecycle (pending/observing/confirmed/"
+        "rejected) as git-friendly records — the outcome side of `observe`",
+    )
+    fu.add_argument("action", choices=["add", "set", "list"], help="add / update / list")
+    fu.add_argument("--tic", type=int, default=None, help="target TIC (add/set)")
+    fu.add_argument("--sector", type=int, default=None, help="sector (add/set)")
+    fu.add_argument("--dir", default="followups", help="follow-up records directory")
+    fu.add_argument("--status", default=None, choices=list(STATUSES),
+                    help="pending|observing|confirmed|rejected (add sets initial, set transitions)")
+    fu.add_argument("--kind", default="planet_candidate", choices=list(KINDS),
+                    help="what the target is (add)")
+    fu.add_argument("--observer", default=None, help="who is following it up")
+    fu.add_argument("--note", default=None, help="a dated log line to append")
+    fu.add_argument("--from-record", default=None, metavar="JSON",
+                    help="add: seed TIC + sector + next-transit window from a candidate record")
 
     cc = sub.add_parser(
         "clean-cache",
@@ -882,7 +901,66 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "observe":
         return _observe(args)
 
+    if args.cmd == "followup":
+        return _followup(args)
+
     return 1
+
+
+def _followup(args) -> int:
+    import json as _json
+
+    from .followup import apply_update, load_all, load_followup, new_followup, save_followup
+
+    if args.action == "list":
+        recs = load_all(args.dir)
+        if args.status:
+            recs = [r for r in recs if r.status == args.status]
+        if not recs:
+            print(f"No follow-up records in {args.dir}" + (f" with status {args.status}" if args.status else "") + ".")
+            return 0
+        print(f"{len(recs)} follow-up target(s) in {args.dir}:")
+        for r in recs:
+            obs = f"  obs={r.observer}" if r.observer else ""
+            last = r.notes[-1] if r.notes else ""
+            print(f"  TIC {r.tic} S{r.sector}  [{r.status}]  {r.kind}{obs}")
+            if last:
+                print(f"      {last}")
+        return 0
+
+    if args.tic is None or args.sector is None:
+        print("followup add/set need --tic and --sector.")
+        return 1
+
+    if args.action == "add":
+        window = None
+        kind = args.kind
+        if args.from_record:
+            rec = _json.loads(Path(args.from_record).read_text(encoding="utf-8"))
+            window = rec.get("next_window_btjd")
+            if rec.get("likely_eb"):
+                kind = "eclipsing_binary"
+        fr = new_followup(
+            args.tic, args.sector, kind=kind, status=args.status or "pending",
+            observer=args.observer, next_window_btjd=window, note=args.note,
+        )
+        path = save_followup(args.dir, fr)
+        print(f"tracking TIC {fr.tic} S{fr.sector} [{fr.status}] -> {path}")
+        return 0
+
+    # action == "set"
+    fr = load_followup(args.dir, args.tic, args.sector)
+    if fr is None:
+        print(f"No follow-up record for TIC {args.tic} S{args.sector} in {args.dir} (add it first).")
+        return 1
+    try:
+        fr = apply_update(fr, status=args.status, note=args.note, observer=args.observer)
+    except ValueError as exc:
+        print(f"refused: {exc}. Allowed from {fr.status}: see STATUSES.")
+        return 1
+    save_followup(args.dir, fr)
+    print(f"TIC {fr.tic} S{fr.sector} -> [{fr.status}]" + (f"  ({args.note})" if args.note else ""))
+    return 0
 
 
 def _parse_time_to_btjd(s: str) -> float:

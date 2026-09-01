@@ -45,6 +45,8 @@ SIDE PRODUCTS (same download):
     -> catalog CSV -> catalog_page (static HTML) -> Pages
   ffi_batch (one cutout -> many stars, crowding dedup, full records)
   ground (ZTF via IRSA + ASAS-SN via pyasassn: variability cross-check)
+  followup (confirmation lifecycle pending->observing->confirmed|rejected; per-target
+    JSON in followups/; pure state model, offline; outcome side of `observe`)
   anomaly (flares, dippers; pull_guarded_dips shared)   vetting (crowd label UI)   triage (ML rank)
   anomaly_ext (deep dimming/Boyajian, heartbeat, pulsator subclass RRLyr/dSct/gDor,
     CV/nova outbursts, generalized anomaly_score) -> fed into summary v3
@@ -132,6 +134,9 @@ monohunter watch --sector N --dry-run             # pool size + done/remaining, 
 monohunter triage --candidates DIR --top 10       # vetting short-list (N highest-ranked)
 monohunter summarize --from-catalog catalogs/sectorN.csv --outdir DIR --workers 4  # repopulate subclass
 monohunter observe --record REC.json --lat L --lon G  # next-transit -> up+dark clock windows
+monohunter followup add --tic <id> --sector N --from-record REC.json --status observing
+monohunter followup set --tic <id> --sector N --status confirmed --note "2nd transit caught"
+monohunter followup list [--status observing]        # confirmation ledger (followups/)
 # release: bump pyproject.toml + monohunter/__init__.py + CHANGELOG.md
 git tag vX.Y.Z && git push origin vX.Y.Z    # -> release.yml (PyPI OIDC) + docker.yml (GHCR)
 # 24/7 deploy: docker compose up -d   (restart:always watcher on newest sector, ./data volume)
