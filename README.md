@@ -67,6 +67,7 @@ monohunter run --tic 298663873 --sectors 19
 | `--outdir <path>` | `candidates` | where JSON + PNG are written |
 | `--no-plot` | off | skip PNG generation |
 | `--ffi` | off | extract from the Full-Frame Images via TESScut — reaches stars with **no** pre-made SPOC/QLP light curve |
+| `--dry-run` | off | list the sectors available for the TIC and exit (no download/detect) |
 
 ### Reading a result
 
@@ -74,7 +75,7 @@ Each candidate is one JSON file:
 
 ```json
 {
-  "schema_version": 6,
+  "schema_version": 7,
   "tic": 298663873,
   "sector": 19,
   "cadence_s": 120,
@@ -95,9 +96,16 @@ Each candidate is one JSON file:
   "n_sectors_observed": 1,
   "recurring_dip": false,
   "measured_period_d": null,
+  "edge_gap_dist_d": 6.4,
+  "baseline_scatter_ppt": 0.21,
   "plot_path": "candidates/tic298663873_s19.png"
 }
 ```
+
+The two v7 fields are false-positive-triage features computed from the light curve:
+`edge_gap_dist_d` (distance to the nearest sector edge / data gap — FP ramps cluster
+there) and `baseline_scatter_ppt` (per-cadence scatter; faint/noisy stars give
+untrustworthy shallow dips). They let the triage model rank survivors on any sector.
 
 | Field | Meaning |
 |-------|---------|
@@ -191,9 +199,13 @@ monohunter watch --sector 17 --max 5000 --workers 3 --max-hours 5 \
     --summaries summaries_s17 --csv-log sweeps/sector17.csv
 ```
 
-`--max-hours` is a safety net: a hung MAST socket can wedge a worker indefinitely,
-so the run force-exits past that wall-clock (set it a bit above the expected
-runtime). It's resumable — re-run the same command to continue where it stopped.
+**Safety net for long runs.** Every network read is capped (a 180 s socket timeout),
+`watch` prints live per-star progress with elapsed/ETA, and `--slow-warn S` flags any
+star taking longer than `S` seconds — a stall short of the hard timeout is visible
+instead of a silent freeze. `--max-hours` is the wall-clock watchdog: it soft-warns at
+80 % of the cap, then force-exits (a hung MAST socket can wedge a worker indefinitely).
+It's resumable — re-run to continue where it stopped. Preview a sweep without downloading
+anything via `monohunter watch --sector N --dry-run` (pool size + done/remaining).
 
 `--csv-log` appends one status row per star (`none`/`novel`/`error`) — the
 scan-log a catalog and any retry build from. A star that errors (usually a
@@ -221,14 +233,40 @@ flagged `recurring_dip` (periodic/variable, not a clean mono-transit), and once
 it transits in ≥3 sectors the exact period is fitted from the transit times
 (`measured_period_d`) — vastly tighter than the single-transit range.
 
+**Is it observable? `observe`** turns a next-transit window into concrete
+"target-up **and** sky-dark" clock-time intervals for an observer's latitude/longitude —
+so you know whether, and *when*, to point a telescope. Coordinates come from `--ra/--dec`
+or a `--tic` (fetched from MAST); the window from `--start/--end` or straight from a
+candidate record:
+
+```bash
+monohunter observe --record contributions/Rinkia/tic400048097_s17.json --lat 45.19 --lon 9.16
+#   TIC 400048097 ...: 2026-08-28 21:00 UTC -> 2026-08-29 03:30 UTC  (6.5h)  ...
+```
+
+Tune with `--min-alt` (default 30°) and `--sun-alt` (−18° astronomical / −12° nautical).
+Astropy only — no extra dependency.
+
 ## More commands
 
-**Anomaly detection** — flares (brightenings) and dippers (aperiodic multi-dip
-young stars), on the same light curves:
+**Anomaly detection** — a suite of non-transit light-curve anomaly classes on the same
+downloads, each reported per sector with a generalized 0–1 anomaly score:
 
 ```bash
 monohunter anomaly --tic 441420236     # AU Mic: flares detected
 ```
+
+| Detector | Flags |
+|----------|-------|
+| **flares** | sharp positive brightenings |
+| **dippers** | aperiodic multi-dip young stars (dust) |
+| **deep dimming** | deep (%-level) *aperiodic* dips — Boyajian / KIC 8462852-like |
+| **heartbeat** | eccentric-binary tidal pulse, once per orbit (phase-localized + bipolar) |
+| **outbursts** | sustained (hours+) brightenings — cataclysmic-variable / nova |
+| **anomaly score** | model-agnostic 0–1 "weirdness" blend, with a component breakdown |
+
+These flags (plus `anomaly_score`) are also written into the per-star summary catalog
+(see below), so a full sweep surfaces the strangest curves for a human to look at.
 
 **FFI reach** — extract from the Full-Frame Images to search stars with no
 pre-made light curve. One target (`run --ffi`), or a whole cutout at once:
@@ -268,8 +306,21 @@ monohunter catalog --summaries summaries --out catalog.csv
 ```
 
 The `subclass` field splits variables into **eclipsing** (≥2 eclipse-shaped dips),
-**pulsator** (near-pure sinusoid, low 2nd-harmonic content), and **rotator**
-(non-sinusoidal spot modulation) via periodogram harmonics.
+**rotator** (non-sinusoidal spot modulation), and physical pulsator classes —
+**rr_lyrae** (large-amplitude sawtooth), **delta_scuti** (fast, < 0.3 d), **gamma_dor**
+(slow g-mode, 0.3–3 d) — via periodogram harmonics + fold shape. Each catalog row also
+carries the anomaly flags (`anomaly_score`, `is_deep_dipper`, `n_outbursts`,
+`is_heartbeat`) from the same download.
+
+Write one line per star to a single file with a `.jsonl` `--summaries` / `--outdir`
+target — one open instead of thousands of tiny JSONs when building a big catalog.
+**Repopulate an existing catalog** (e.g. to backfill new fields) by re-summarizing every
+star it lists, in parallel and resumably:
+
+```bash
+monohunter summarize --from-catalog catalogs/sector18.csv --outdir summaries_s18 \
+    --workers 4 --max-hours 6      # progress per star; watchdog + --slow-warn as in watch
+```
 
 **Rotation-period distribution** — a population science figure straight from a
 catalog CSV: the period distribution and the period–amplitude relation over every
@@ -288,11 +339,32 @@ then rank future survivors by how much they deserve a human's eyes:
 ```bash
 monohunter vet --candidates candidates --out _vet      # static page: PNGs + label buttons
 monohunter triage-train --labels labels/seed_labels.csv --sweeps sweeps
-monohunter triage --candidates candidates              # ranks by P(worth vetting)
+monohunter triage --candidates candidates --top 10     # ranks by P(worth vetting)
 ```
 
 The vetting page exports labels as JSON; those labels train the triage model,
-which then puts the real finds at the top of the next sweep's queue.
+which then puts the real finds at the top of the next sweep's queue. `--top N`
+(and `--min-prob P`) trims the ranked output to the short-list worth a human's time.
+
+**Novelty cross-match** — is a find already a known variable star? Cone-matches against
+both the AAVSO Variable Star Index (VSX) **and** Gaia DR3 variability; a candidate is
+"novel" only when unknown to both:
+
+```bash
+monohunter novelty --tic 298009554                     # or --candidates <dir> to batch
+```
+
+**FFI star pool** — enumerate the non-SPOC stars in a sky region (catalog stars with no
+2-min light curve) and sweep them via the FFI path — a true FFI sweep:
+
+```bash
+monohunter ffi-pool --tic <center> --sector 18 --radius 0.2 --out ffi_pool.txt
+monohunter watch --sector 18 --ffi --target-pool ffi_pool.txt
+```
+
+**Cache hygiene** — a truncated MAST download leaves a corrupt partial FITS that can wedge
+a later run; sweep them (exact-size stubs) with `monohunter clean-cache` (`--dry-run` to
+preview).
 
 ## Survey sensitivity (completeness)
 
@@ -322,6 +394,25 @@ on every merged contribution.
 Vetted candidates worth follow-up (RV, characterization, a second transit) are
 tracked in [docs/followup-targets.md](docs/followup-targets.md) — currently led by
 **TIC 400048097**, a bright, uncatalogued star with one clean 2.5% transit.
+
+### Confirmation tracking (`followup`)
+
+A candidate is not a discovery until it's confirmed. `followup` tracks that lifecycle —
+`pending → observing → confirmed | rejected` — as git-friendly per-target JSON records in
+[`followups/`](followups/), so the community can see what's pending, being observed,
+confirmed, or ruled out. It's the outcome side of `observe`: observe says *when to point*,
+followup records *what happened*.
+
+```bash
+monohunter followup add --tic 400048097 --sector 17 \
+    --from-record contributions/Rinkia/tic400048097_s17.json --status observing --note "watching next window"
+monohunter followup set --tic 400048097 --sector 17 --status confirmed --note "2nd transit caught 2026-08-29"
+monohunter followup list --status observing
+```
+
+`add` seeds the TIC, sector, and next-transit window from a candidate record; `set`
+applies a validated status transition with a dated note and observer; `list` shows the
+ledger. The three live targets ship pre-seeded. Extend it by PR, like `contributions/`.
 
 Build it yourself from a `contributions/` tree:
 
