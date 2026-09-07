@@ -1,0 +1,6 @@
+# Shell scripts and Dockerfiles MUST keep LF endings — CRLF breaks the shebang and
+# `sh` parsing inside the Linux container image. Force LF regardless of contributor OS
+# or core.autocrlf setting.
+*.sh text eol=lf
+docker/entrypoint.sh text eol=lf
+Dockerfile text eol=lf
