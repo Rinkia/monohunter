@@ -332,6 +332,26 @@ def main(argv: list[str] | None = None) -> int:
     wat.add_argument("--slow-warn", type=float, default=120.0, metavar="S",
                      help="warn when a single star takes longer than S seconds (a stall)")
 
+    wl = sub.add_parser(
+        "watch-loop",
+        help="24/7 self-healing watcher: loop `watch` on the newest sector, prune the "
+        "cache, sleep, repeat — the command the Docker/Fly deployment runs",
+    )
+    wl.add_argument("--hint", type=int, default=1,
+                    help="start probing for the newest sector here (set <= current newest)")
+    wl.add_argument("--max", type=int, default=200, help="stars scanned per cycle")
+    wl.add_argument("--workers", type=int, default=3, help="parallel MAST downloads (3-8)")
+    wl.add_argument("--max-hours", type=float, default=4.0,
+                    help="per-cycle watchdog: force-exit a cycle wedged past this (resumable)")
+    wl.add_argument("--sleep", type=float, default=10800.0, help="seconds between cycles")
+    wl.add_argument("--out", default="candidates", help="candidate output dir")
+    wl.add_argument("--state", default="watch_state.json", help="resume state file")
+    wl.add_argument("--summaries", default=None, metavar="DIR",
+                    help="also write the variability catalog per star (dir or .jsonl)")
+    wl.add_argument("--csv-log", default=None, metavar="CSV", help="per-star provenance log")
+    wl.add_argument("--cycles", type=int, default=None,
+                    help="stop after N cycles (default: run forever)")
+
     fp = sub.add_parser(
         "ffi-pool",
         help="enumerate the non-SPOC FFI star pool for a sky region of a sector "
@@ -855,6 +875,17 @@ def main(argv: list[str] | None = None) -> int:
         )
         for rec in sorted(res.novel, key=lambda r: -r.snr):
             print(f"  NOVEL TIC {rec.tic} S{rec.sector} SNR {rec.snr:.0f} depth {rec.depth_ppt:.2f}ppt")
+        return 0
+
+    if args.cmd == "watch-loop":
+        from .watch import watch_loop
+
+        watch_loop(
+            hint=args.hint, max_targets=args.max, workers=args.workers,
+            max_hours=args.max_hours, outdir=args.out, state_path=args.state,
+            summaries_dir=args.summaries, csv_log=args.csv_log,
+            sleep_s=args.sleep, cycles=args.cycles,
+        )
         return 0
 
     if args.cmd == "clean-cache":

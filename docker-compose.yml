@@ -17,25 +17,23 @@ services:
   watcher:
     image: ghcr.io/rinkia/monohunter:latest
     restart: always
-    environment:
-      HINT: "90"        # start probing for the newest sector here (<= current newest)
-      MAX: "200"        # stars scanned per cycle (incremental; resumable)
-      WORKERS: "3"      # parallel MAST downloads (keep modest; MAST-polite)
-      SLEEP: "10800"    # seconds between cycles (3 h)
-      MAXHOURS: "4"     # safety net: force-exit a cycle that hangs past this (resumable)
     volumes:
       - monohunter-data:/data
-    entrypoint: ["sh", "-lc"]
-    # $$VAR so compose passes a literal $VAR for the in-container shell to expand.
-    command: >
-      while true; do
-        monohunter watch --hint "$$HINT" --max "$$MAX" --workers "$$WORKERS"
-          --max-hours "$$MAXHOURS"
-          --out /data/candidates --state /data/watch_state.json
-          --summaries /data/summaries --csv-log /data/sweep.csv || true;
-        find /data/.cache/lightkurve -name '*.fits' -size 65536c -delete 2>/dev/null || true;
-        echo "cycle done; sleeping $$SLEEP s"; sleep "$$SLEEP";
-      done
+    # The self-healing loop is now a first-class command (monohunter watch-loop): auto-
+    # detects the newest sector, scans one resumable cycle, prunes corrupt cached FITS,
+    # sleeps, repeats. Same command the Fly.io deployment runs (see docs/deploy-fly.md).
+    # --hint: a sector at or below the current newest (the watcher probes upward from it).
+    command:
+      - watch-loop
+      - --hint=90
+      - --max=200            # stars per cycle (incremental; resumable)
+      - --workers=3          # parallel MAST downloads (modest; MAST-polite)
+      - --max-hours=4        # per-cycle watchdog (force-exit a hung cycle; resumable)
+      - --sleep=10800        # 3 h between cycles
+      - --out=/data/candidates
+      - --state=/data/watch_state.json
+      - --summaries=/data/summaries
+      - --csv-log=/data/sweep.csv
 
 volumes:
   monohunter-data:

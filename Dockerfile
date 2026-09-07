@@ -13,19 +13,25 @@ ENV PYTHONUNBUFFERED=1 \
     HOME=/data \
     MPLBACKEND=Agg
 
+# gosu lets the entrypoint drop from root to the unprivileged user AFTER chowning the
+# mounted volume (needed on hosts like Fly.io that attach volumes as root).
+RUN apt-get update && apt-get install -y --no-install-recommends gosu \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 # Only what the build needs (pyproject reads README); keeps the context lean.
 COPY pyproject.toml README.md ./
 COPY monohunter ./monohunter
 RUN pip install --no-cache-dir .
 
-# Run as a non-root user: monohunter needs no privileges, and if a malicious FITS ever
+# Non-root at RUNTIME: monohunter needs no privileges, and if a malicious FITS ever
 # tripped a parser bug in a dependency, the blast radius is an unprivileged UID with only
-# the mounted /data volume — not container-root. /data is created + owned so the volume is
-# writable whether or not the host bind-mounts over it.
+# the mounted /data volume — not container-root. The entrypoint starts as root ONLY to
+# chown the volume mountpoint, then hands off to this user via gosu (see docker/entrypoint.sh).
 RUN useradd --uid 10001 --create-home --home-dir /data monohunter
-USER monohunter
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
 WORKDIR /data
-ENTRYPOINT ["monohunter"]
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["--help"]

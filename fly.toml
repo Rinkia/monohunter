@@ -1,0 +1,38 @@
+# monohunter — 24/7 TESS fresh-data watcher on Fly.io.
+#
+# This is a WORKER app: it has no web server and exposes no ports. One machine runs
+# `monohunter watch-loop` forever (auto-detect newest sector -> scan a resumable cycle ->
+# prune corrupt cached FITS -> sleep -> repeat), persisting everything in a volume at
+# /data. See docs/deploy-fly.md for the full walkthrough.
+#
+# Rename `app` before the first deploy (must be globally unique on Fly) and set
+# `primary_region` to one near you (`fly platform regions` lists them).
+
+app = "monohunter-watcher"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+# The forever-loop watcher. The image entrypoint prepends `monohunter`, and chowns the
+# volume + drops to the non-root user first (see docker/entrypoint.sh). --hint should be a
+# sector at or below the current newest (the loop probes upward from it).
+[processes]
+  watcher = "watch-loop --hint 90 --max 200 --workers 3 --max-hours 4 --sleep 10800 --out /data/candidates --state /data/watch_state.json --summaries /data/summaries --csv-log /data/sweep.csv"
+
+# Persistent state, cache, and outputs. Create it once with:
+#   fly volumes create monohunter_data --size 3 --region iad
+# The cache grows with downloaded FITS; extend with `fly volumes extend` if it fills.
+[mounts]
+  source = "monohunter_data"
+  destination = "/data"
+
+# Keep the single watcher alive: relaunch on any exit (the --max-hours watchdog exits a
+# wedged cycle on purpose; the relaunch resumes from saved state). One machine only — two
+# would race the same sector (state dedups, but it wastes MAST budget).
+[[restart]]
+  policy = "always"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"          # astropy + scipy + the box scan; 512mb is too tight

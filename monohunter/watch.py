@@ -243,3 +243,72 @@ def watch(
     return WatchResult(
         sector=sector, scanned=len(todo), remaining=remaining, novel=novel, errors=n_errors
     )
+
+
+def watch_loop(
+    *,
+    hint: int = 1,
+    max_targets: int = 200,
+    workers: int = 3,
+    max_hours: float | None = 4.0,
+    outdir: str = "candidates",
+    state_path: str = "watch_state.json",
+    summaries_dir: str | None = None,
+    csv_log: str | None = None,
+    sleep_s: float = 10800.0,
+    cache_dir: str | None = None,
+    cycles: int | None = None,
+    watch_fn: Callable[..., WatchResult] | None = None,
+    clean_fn: Callable[..., tuple[int, int]] | None = None,
+    sleeper: Callable[[float], None] | None = None,
+    log: Callable[[str], None] = print,
+) -> int:
+    """Self-healing forever-loop around watch(): auto-detect the newest sector, scan one
+    resumable cycle, prune corrupt cached FITS, sleep, repeat. This is the 24/7 watcher —
+    the same loop the Docker/Fly deployment runs, as one cross-platform command instead of
+    an inline shell loop.
+
+    Every cycle is wrapped so a transient failure (usually MAST) logs and continues rather
+    than killing the watcher; watch()'s own --max-hours watchdog still hard-exits a wedged
+    cycle, and the supervisor (compose `restart: always` / a Fly restart policy) relaunches
+    it — state is saved per star, so nothing is lost. `cycles` caps iterations (None =
+    forever); the injected deps make it unit-testable offline. Returns the cycle count run.
+    """
+    import time as _time
+    from pathlib import Path
+
+    from .fetch import clean_cache, default_cache_dir
+
+    run_watch = watch_fn or watch
+    prune = clean_fn or clean_cache
+    rest = sleeper or _time.sleep
+    cache = cache_dir if cache_dir is not None else str(default_cache_dir())
+
+    i = 0
+    while cycles is None or i < cycles:
+        i += 1
+        try:
+            sector = latest_sector(hint=hint)
+            if sector is None:
+                log(f"[watch-loop] cycle {i}: no sector detected from hint {hint}; will retry")
+            else:
+                res = run_watch(
+                    sector, outdir=outdir, state_path=state_path, max_targets=max_targets,
+                    workers=workers, max_hours=max_hours, summaries_dir=summaries_dir,
+                    csv_log=csv_log, show_progress=True,
+                )
+                log(f"[watch-loop] cycle {i}: sector {res.sector} scanned {res.scanned}, "
+                    f"{len(res.novel)} novel, {res.errors} error, {res.remaining} remaining")
+        except Exception as exc:   # a bad cycle must not kill the watcher
+            log(f"[watch-loop] cycle {i} failed: {exc!r}; continuing")
+        try:
+            n, _freed = prune(cache)
+            if n:
+                log(f"[watch-loop] pruned {n} corrupt cached FITS")
+        except Exception:
+            pass
+        if cycles is not None and i >= cycles:
+            break
+        log(f"[watch-loop] sleeping {sleep_s:.0f}s")
+        rest(sleep_s)
+    return i

@@ -127,6 +127,7 @@ monohunter completeness --tic <quiet> --sector N [--sample M --catalog CSV] [--p
 monohunter novelty --tic <id> | --candidates DIR  # VSX + Gaia DR3 known-vs-new
 monohunter ffi-pool --sector N --tic <c> --radius 0.2 --out ffi_pool.txt  # non-SPOC pool
 monohunter watch --sector N --ffi --target-pool ffi_pool.txt  # true FFI sweep
+monohunter watch-loop --hint 90 --sleep 10800      # 24/7 self-healing watcher (Docker/Fly command)
 monohunter aggregate --contributions contributions --out _site
 monohunter clean-cache [--dry-run]                # delete truncated partial FITS stubs
 monohunter run --tic <id> --dry-run               # list available sectors, no download
@@ -139,8 +140,11 @@ monohunter followup set --tic <id> --sector N --status confirmed --note "2nd tra
 monohunter followup list [--status observing]        # confirmation ledger (followups/)
 # release: bump pyproject.toml + monohunter/__init__.py + CHANGELOG.md
 git tag vX.Y.Z && git push origin vX.Y.Z    # -> release.yml (PyPI OIDC) + docker.yml (GHCR)
-# 24/7 deploy: docker compose up -d   (restart:always watcher on newest sector, ./data volume)
-docker run --rm -v ./data:/data ghcr.io/rinkia/monohunter watch --sector N --csv-log ...
+# 24/7 deploy: docker compose up -d   (runs `watch-loop`, restart:always, monohunter-data volume)
+# Fly.io: fly.toml (worker, no web svc, /data volume) + docs/deploy-fly.md; entrypoint.sh
+#   chowns the volume + gosu-drops to non-root (Fly mounts volumes as root). watch-loop is
+#   the shared loop command (Python, cross-platform) — no more inline shell loop in compose.
+docker run --rm -v monohunter-data:/data ghcr.io/rinkia/monohunter watch --sector N --csv-log ...
 ```
 Sector pool: `Observations.query_criteria(obs_collection='TESS',
 dataproduct_type='timeseries',sequence_number=N,t_exptime=120)`.

@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.10.0
+
+The deploy-anywhere release — run the 24/7 watcher on Fly.io (or any host).
+
+- **`monohunter watch-loop`** — the self-healing watcher loop is now a first-class,
+  cross-platform command (auto-detect the newest sector → scan a resumable cycle → prune
+  corrupt cached FITS → sleep → repeat), replacing the inline shell loop that was
+  duplicated in `docker-compose.yml`. A bad cycle logs and continues; `--max-hours` still
+  hard-exits a wedged cycle for the supervisor to relaunch. `--cycles N` bounds it (tests).
+- **Fly.io deploy package** — [`fly.toml`](fly.toml) (worker machine, no web service,
+  persistent `/data` volume, `restart = always`) + [`docs/deploy-fly.md`](docs/deploy-fly.md)
+  walkthrough. Builds from the existing Dockerfile.
+- **Volume-safe entrypoint** — [`docker/entrypoint.sh`](docker/entrypoint.sh) chowns the
+  mounted volume then drops from root to the unprivileged user via `gosu`, so the container
+  runs non-root at runtime even where the host attaches the volume as root (Fly.io, plain
+  bind mounts). `docker run … run --tic …` behaves exactly as before.
+- `docker-compose.yml` simplified to run `watch-loop` (same command as Fly).
+
 ## 0.9.2
 
 Security hardening (from an adversarial audit — no functional change to the science):

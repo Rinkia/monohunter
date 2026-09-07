@@ -40,8 +40,10 @@ The container runs as a **non-root** user, so it persists to a Docker **named vo
 (`monohunter-data` above — Docker makes it writable by that user). A plain
 `-v "$PWD/data:/data"` bind mount is root-owned on the host and needs a one-time
 `chown 10001 data` to be writable. For an always-on fresh-data watcher (ideal on a
-homelab), `docker compose up -d` runs `monohunter watch` on the newest sector in a
-resumable, self-healing loop — see [`docker-compose.yml`](docker-compose.yml).
+homelab), `docker compose up -d` runs `monohunter watch-loop` on the newest sector in a
+resumable, self-healing loop — see [`docker-compose.yml`](docker-compose.yml). To run that
+watcher in the cloud, deploy it to **Fly.io** with the included [`fly.toml`](fly.toml) —
+see [docs/deploy-fly.md](docs/deploy-fly.md).
 
 ## Usage
 
