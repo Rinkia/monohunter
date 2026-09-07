@@ -1,0 +1,40 @@
+# monohunter — CHEAPER scheduled watcher on Fly.io.
+#
+# Instead of one machine running 24/7 (see fly.toml), this runs ONE watch cycle then
+# EXITS, and you attach a schedule so Fly wakes it periodically. You pay only for the few
+# minutes each cycle actually runs — roughly 1/5–1/8 the always-on compute cost.
+#
+# `watch-loop --cycles 1` scans one resumable cycle, prunes corrupt cached FITS, then
+# exits (it breaks before sleeping when the cycle cap is hit). `restart = "no"` keeps Fly
+# from relaunching it on that clean exit — the SCHEDULE is what re-runs it.
+#
+# fly.toml has no schedule field (it's a machine property), so set it after deploy:
+#   fly deploy -c fly.scheduled.toml --app monohunter-watcher
+#   fly machine list --app monohunter-watcher            # get the machine id
+#   fly machine update <id> --schedule hourly --app monohunter-watcher
+# Fly's presets are hourly | daily | weekly | monthly. `hourly` at --max 200 ≈ matches
+# throughput (~200 stars/hr); use `daily` for a lighter touch. See docs/deploy-fly.md.
+
+app = "monohunter-watcher"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+# One cycle then exit. --max-hours 0.75 caps a wedged cycle below the hourly trigger so
+# runs never overlap. Same volume paths as the always-on config.
+[processes]
+  watcher = "watch-loop --cycles 1 --hint 90 --max 200 --workers 3 --max-hours 0.75 --out /data/candidates --state /data/watch_state.json --summaries /data/summaries --csv-log /data/sweep.csv"
+
+[mounts]
+  source = "monohunter_data"
+  destination = "/data"
+
+# Do NOT relaunch on exit — the machine is meant to stop after each cycle and be woken by
+# the schedule. (Without this, Fly would immediately restart it into a de-facto 24/7 loop.)
+[[restart]]
+  policy = "no"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"

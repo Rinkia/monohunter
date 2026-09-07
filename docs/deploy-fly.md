@@ -74,6 +74,31 @@ Edit the `watcher` process line in [`fly.toml`](../fly.toml) and re-`fly deploy`
 The same command runs locally (`monohunter watch-loop …`) and under
 [`docker-compose.yml`](../docker-compose.yml) on a homelab — Fly is just another host for it.
 
+## Cheaper: a scheduled machine (pay per cycle, not 24/7)
+
+The always-on machine above stays allocated (and billed) even while it sleeps between
+cycles. If you don't need near-real-time freshness, run a **scheduled** machine instead:
+it wakes on a schedule, runs ONE cycle, and exits — so you pay only for the few minutes
+each cycle actually runs (roughly **1/5–1/8** the always-on compute cost).
+
+Use [`fly.scheduled.toml`](../fly.scheduled.toml) (runs `watch-loop --cycles 1`, which
+scans one resumable cycle, prunes corrupt FITS, then exits; `restart = "no"` so Fly
+doesn't relaunch it into a 24/7 loop). fly.toml has no schedule field — set it on the
+machine after deploy:
+
+```bash
+fly deploy -c fly.scheduled.toml --app monohunter-watcher
+fly machine list --app monohunter-watcher                 # copy the machine id
+fly machine update <id> --schedule hourly --app monohunter-watcher
+```
+
+Fly's schedule presets are `hourly | daily | weekly | monthly`. `hourly` at `--max 200`
+(~200 stars/hr) roughly matches throughput; use `daily` for a lighter, cheaper touch. The
+`--max-hours 0.75` cap keeps a wedged cycle from overlapping the next hourly trigger. State
+persists on the same volume, so cycles pick up where the last left off.
+
+To switch back to always-on, deploy the default config again: `fly deploy -c fly.toml`.
+
 ## Costs & housekeeping
 
 - One `shared-cpu-1x` / 1 GB machine plus a small volume is inexpensive, but **not free** —
